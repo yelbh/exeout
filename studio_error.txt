@@ -1,0 +1,97 @@
+
+> exeoutput-studio@1.0.0 tauri:build
+> tauri build
+
+     Running beforeBuildCommand `npm run build`
+
+> exeoutput-studio@1.0.0 build
+> vite build
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 66 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                          [39m[1m[2m  0.40 kB[22m[1m[22m[2m │ gzip:  0.27 kB[22m
+[2mdist/[22m[35massets/Settings-UoUnfuU8.css        [39m[1m[2m  0.52 kB[22m[1m[22m[2m │ gzip:  0.27 kB[22m
+[2mdist/[22m[35massets/ProjectWizard-B2qq_oak.css   [39m[1m[2m  1.00 kB[22m[1m[22m[2m │ gzip:  0.44 kB[22m
+[2mdist/[22m[35massets/CompilerConfig-BjTau7q0.css  [39m[1m[2m  1.03 kB[22m[1m[22m[2m │ gzip:  0.39 kB[22m
+[2mdist/[22m[35massets/index-DJrSnfSW.css           [39m[1m[2m  3.79 kB[22m[1m[22m[2m │ gzip:  1.26 kB[22m
+[2mdist/[22m[36massets/Settings-Cf1oW7wh.js         [39m[1m[2m  0.95 kB[22m[1m[22m[2m │ gzip:  0.58 kB[22m
+[2mdist/[22m[36massets/ProjectWizard-DGiId6Ti.js    [39m[1m[2m  2.11 kB[22m[1m[22m[2m │ gzip:  0.95 kB[22m
+[2mdist/[22m[36massets/CompilerConfig-DAN9IvV8.js   [39m[1m[2m  3.45 kB[22m[1m[22m[2m │ gzip:  1.40 kB[22m
+[2mdist/[22m[36massets/index-BErZdG-r.js            [39m[1m[2m116.52 kB[22m[1m[22m[2m │ gzip: 43.26 kB[22m
+[32m✓ built in 2.75s[39m
+   Compiling exeoutput-studio v1.0.0 (C:\aserveur\www\exephp\src-tauri)
+warning: unused import: `winapi::um::fileapi::SetFileAttributesW`
+ --> src\utils\windows.rs:4:5
+  |
+4 | use winapi::um::fileapi::SetFileAttributesW;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `winapi::um::shellapi::SHGetFileInfoW`
+ --> src\utils\windows.rs:5:5
+  |
+5 | use winapi::um::shellapi::SHGetFileInfoW;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `winapi::um::winuser::SendMessageW`
+ --> src\utils\windows.rs:6:5
+  |
+6 | use winapi::um::winuser::SendMessageW;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+  --> src\runtime\generator.rs:24:24
+   |
+24 |         let compiler = Compiler::new(self.source_path.to_str().unwrap(), "dist/output.exe");
+   |                        ^^^^^^^^^^^^^------------------------------------------------------- argument #3 of type `&str` is missing
+   |
+note: associated function defined here
+  --> src\compiler\packer.rs:33:12
+   |
+33 |     pub fn new(source: &str, output: &str, entry_point: &str) -> Self {
+   |            ^^^                             -----------------
+help: provide the argument
+   |
+24 |         let compiler = Compiler::new(self.source_path.to_str().unwrap(), "dist/output.exe", /* &str */);
+   |                                                                                           ++++++++++++
+
+warning: unused variable: `path`
+  --> src\utils\windows.rs:19:24
+   |
+19 | pub fn set_file_hidden(path: &Path) -> Result<()> {
+   |                        ^^^^ help: if this is intentional, prefix it with an underscore: `_path`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `target`
+  --> src\utils\windows.rs:24:24
+   |
+24 | pub fn create_shortcut(target: &Path, link_path: &Path) -> Result<()> {
+   |                        ^^^^^^ help: if this is intentional, prefix it with an underscore: `_target`
+
+warning: unused variable: `link_path`
+  --> src\utils\windows.rs:24:39
+   |
+24 | pub fn create_shortcut(target: &Path, link_path: &Path) -> Result<()> {
+   |                                       ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_link_path`
+
+warning: unused variable: `exe_path`
+  --> src\runtime\generator.rs:31:35
+   |
+31 |     pub fn sign_executable(&self, exe_path: &Path) -> Result<()> {
+   |                                   ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_exe_path`
+
+warning: unused variable: `name`
+  --> src\main.rs:32:49
+   |
+32 | async fn compile_project(window: tauri::Window, name: String, source: String, output: String, entry_point: String) -> Result<String,...
+   |                                                 ^^^^ help: if this is intentional, prefix it with an underscore: `_name`
+
+For more information about this error, try `rustc --explain E0061`.
+warning: `exeoutput-studio` (bin "exeoutput-studio") generated 8 warnings
+error: could not compile `exeoutput-studio` (bin "exeoutput-studio") due to 1 previous error; 8 warnings emitted
+       Error failed to build app: failed to build app

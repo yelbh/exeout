@@ -1,0 +1,33 @@
+[package]
+name = "exeoutput-studio"
+version = "1.0.0"
+description = "PHP to EXE Compiler Studio"
+authors = ["ExeOutput"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = [ "window-all", "dialog-all", "process-all", "path-all", "fs-all", "shell-all"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.28", features = ["full"] }
+axum = "0.6"
+tower-http = { version = "0.4", features = ["fs", "cors"] }
+zip = "0.6"
+flate2 = "1.0"
+zstd = "0.12"
+aes-gcm = "0.10"
+rand = "0.8"
+winapi = { version = "0.3", features = ["winuser", "libloaderapi", "fileapi", "shellapi", "shlobj"] }
+rust-embed = "6.6"
+base64 = "0.21"
+anyhow = "1.0"
+thiserror = "1.0"
+libc = "0.2"
+libloading = "0.8"
+
+[features]
+# default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

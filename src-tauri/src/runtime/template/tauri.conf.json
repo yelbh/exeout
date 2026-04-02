@@ -1,0 +1,33 @@
+{
+  "build": {
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "EXEOutput App",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "fs": { "all": true },
+      "shell": { "all": true, "open": true },
+      "dialog": { "all": true }
+    },
+    "bundle": {
+      "active": true,
+      "targets": ["nsis"],
+      "identifier": "com.exeoutput.app"
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 600,
+        "resizable": true,
+        "title": "Application",
+        "width": 800
+      }
+    ]
+  }
+}

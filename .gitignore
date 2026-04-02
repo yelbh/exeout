@@ -1,0 +1,21 @@
+node_modules
+target
+dist
+.idea
+.vscode
+*.exe
+*.msi
+logs
+*.log
+.DS_Store
+src-tauri/target
+src-tauri/bin
+
+# Clés de signature - NE JAMAIS committer !
+tauri_private.key
+*.key
+pubkey_output.txt
+
+# Fichiers temporaires de build
+src-tauri/test_errors*.txt
+src-tauri/build_err.txt

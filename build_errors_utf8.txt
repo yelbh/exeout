@@ -1,0 +1,300 @@
+﻿cargo :    Compiling 
+exeoutput-studio v1.0.0 (C:
+\aserveur\www\exephp\src-ta
+uri)
+Au caractère Ligne:1 : 1
++ cargo build 
+--manifest-path 
+src-tauri/Cargo.toml > 
+build_errors.txt 2 ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpecified: (     
+  Compiling ex...ephp\sr   
+ c-tauri):String) [], R    
+emoteException
+    + FullyQualifiedErrorI 
+   d : NativeCommandError
+ 
+warning: unused import: `wi
+napi::um::fileapi::SetFileA
+ttributesW`
+ --> 
+src\utils\windows.rs:4:5
+  |
+4 | use winapi::um::fileapi
+::SetFileAttributesW;
+  |     ^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: 
+`#[warn(unused_imports)]` 
+(part of 
+`#[warn(unused)]`) on by 
+default
+
+warning: unused import: `wi
+napi::um::shellapi::SHGetFi
+leInfoW`
+ --> 
+src\utils\windows.rs:5:5
+  |
+5 | use winapi::um::shellap
+i::SHGetFileInfoW;
+  |     ^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^
+
+warning: unused import: `wi
+napi::um::winuser::SendMess
+ageW`
+ --> 
+src\utils\windows.rs:6:5
+  |
+6 | use winapi::um::winuser
+::SendMessageW;
+  |     ^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+
+warning: unused import: 
+`Stdio`
+   --> src\main.rs:101:33
+    |
+101 |     use 
+std::process::{Command, 
+Stdio};
+    |                      
+           ^^^^^
+
+error[E0308]: mismatched 
+types
+   --> src\main.rs:105:12
+    |
+105 |     if let Ok(mut 
+lock) = 
+state.db_process.lock() {
+    |            
+^^^^^^^^^^^^   
+----------------------- 
+this expression has type 
+`impl Future<Output = tokio
+::sync::MutexGuard<'_, std:
+:option::Option<std::proces
+s::Child>>>`
+    |            |
+    |            expected 
+future, found `Result<_, 
+_>`
+    |
+    = note: expected 
+opaque type `impl 
+Future<Output = tokio::sync
+::MutexGuard<'_, std::optio
+n::Option<std::process::Chi
+ld>>>`
+                      
+found enum `Result<_, _>`
+
+error[E0282]: type 
+annotations needed
+   --> src\main.rs:107:21
+    |
+107 |             let _ = 
+child.kill();
+    |                     
+^^^^^ cannot infer type
+
+error[E0308]: mismatched 
+types
+   --> src\main.rs:110:12
+    |
+110 |     if let Ok(mut 
+lock) = state.preview_proce
+ss.lock() {
+    |            
+^^^^^^^^^^^^   ------------
+---------------- this 
+expression has type `impl 
+Future<Output = tokio::sync
+::MutexGuard<'_, std::optio
+n::Option<std::process::Chi
+ld>>>`
+    |            |
+    |            expected 
+future, found `Result<_, 
+_>`
+    |
+    = note: expected 
+opaque type `impl 
+Future<Output = tokio::sync
+::MutexGuard<'_, std::optio
+n::Option<std::process::Chi
+ld>>>`
+                      
+found enum `Result<_, _>`
+
+error[E0282]: type 
+annotations needed
+   --> src\main.rs:112:21
+    |
+112 |             let _ = 
+child.kill();
+    |                     
+^^^^^ cannot infer type
+
+error[E0308]: mismatched 
+types
+   --> src\main.rs:147:33
+    |
+147 |                      
+    if let Ok(mut lock) = 
+state.db_process.lock() {
+    |                      
+           ^^^^^^^^^^^^   
+----------------------- 
+this expression has type 
+`impl Future<Output = tokio
+::sync::MutexGuard<'_, std:
+:option::Option<std::proces
+s::Child>>>`
+    |                      
+           |
+    |                      
+           expected 
+future, found `Result<_, 
+_>`
+    |
+    = note: expected 
+opaque type `impl 
+Future<Output = tokio::sync
+::MutexGuard<'_, std::optio
+n::Option<std::process::Chi
+ld>>>`
+                      
+found enum `Result<_, _>`
+
+error[E0308]: mismatched 
+types
+   --> src\main.rs:197:20
+    |
+197 |             if let 
+Ok(mut lock) = state.previe
+w_process.lock() {
+    |                    
+^^^^^^^^^^^^   ------------
+---------------- this 
+expression has type `impl 
+Future<Output = tokio::sync
+::MutexGuard<'_, std::optio
+n::Option<std::process::Chi
+ld>>>`
+    |                    |
+    |                    
+expected future, found 
+`Result<_, _>`
+    |
+    = note: expected 
+opaque type `impl 
+Future<Output = tokio::sync
+::MutexGuard<'_, std::optio
+n::Option<std::process::Chi
+ld>>>`
+                      
+found enum `Result<_, _>`
+
+warning: unused variable: 
+`path`
+  --> 
+src\utils\windows.rs:19:24
+   |
+19 | pub fn 
+set_file_hidden(path: 
+&Path) -> Result<()> {
+   |                       
+ ^^^^ help: if this is 
+intentional, prefix it 
+with an underscore: `_path`
+   |
+   = note: `#[warn(unused_v
+ariables)]` (part of 
+`#[warn(unused)]`) on by 
+default
+
+warning: unused variable: 
+`target`
+  --> 
+src\utils\windows.rs:24:24
+   |
+24 | pub fn 
+create_shortcut(target: 
+&Path, link_path: &Path) 
+-> Result<()> {
+   |                       
+ ^^^^^^ help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_target`
+
+warning: unused variable: 
+`link_path`
+  --> 
+src\utils\windows.rs:24:39
+   |
+24 | pub fn 
+create_shortcut(target: 
+&Path, link_path: &Path) 
+-> Result<()> {
+   |                       
+                ^^^^^^^^^ 
+help: if this is 
+intentional, prefix it 
+with an underscore: 
+`_link_path`
+
+warning: unused variable: 
+`exe_path`
+  --> src\runtime\generator
+.rs:35:35
+   |
+35 |     pub fn 
+sign_executable(&self, 
+exe_path: &Path) -> 
+Result<()> {
+   |                       
+            ^^^^^^^^ help: 
+if this is intentional, 
+prefix it with an 
+underscore: `_exe_path`
+
+warning: unused variable: 
+`name`
+  --> src\main.rs:47:49
+   |
+47 | async fn 
+compile_project(window: 
+tauri::Window, name: 
+String, source: String, 
+output: String, 
+entry_point: String, 
+public_dir: Strin...
+   |                       
+                          
+^^^^ help: if this is 
+intentional, prefix it 
+with an underscore: `_name`
+
+Some errors have detailed 
+explanations: E0282, E0308.
+For more information about 
+an error, try `rustc 
+--explain E0282`.
+warning: 
+`exeoutput-studio` (bin 
+"exeoutput-studio") 
+generated 9 warnings
+error: could not compile 
+`exeoutput-studio` (bin 
+"exeoutput-studio") due to 
+6 previous errors; 9 
+warnings emitted
