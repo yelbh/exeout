@@ -1,0 +1,25 @@
+   Compiling loader v0.1.0 (C:\aserveur\www\exephp\src-tauri\loader)
+error[E0433]: failed to resolve: use of undeclared type `LogicalSize`
+   --> src\main.rs:124:26
+    |
+124 |         .with_inner_size(LogicalSize::new(1280.0, 800.0))
+    |                          ^^^^^^^^^^^ use of undeclared type `LogicalSize`
+    |
+help: consider importing one of these structs
+    |
+  3 + use tao::dpi::LogicalSize;
+    |
+  3 + use wry::application::dpi::LogicalSize;
+    |
+
+warning: unused import: `std::path::PathBuf`
+  --> src\main.rs:12:5
+   |
+12 | use std::path::PathBuf;
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `loader` (bin "loader") generated 1 warning
+error: could not compile `loader` (bin "loader") due to 1 previous error; 1 warning emitted
