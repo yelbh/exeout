@@ -8,6 +8,17 @@ export interface Project {
   externalDirs: string[];
   iconPath?: string;
   database?: DatabaseConfig;
+  updateUrl?: string;
+  notes?: string;
+  server?: ServerConfig;
+}
+
+export interface ServerConfig {
+  host: string;
+  user: string;
+  pass: string;
+  port: number;
+  remotePath: string;
 }
 
 export interface DatabaseConfig {

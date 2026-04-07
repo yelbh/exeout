@@ -30,6 +30,14 @@ struct Config {
     pub db_user: Option<String>,
     pub db_pass: Option<String>,
     pub has_init_sql: Option<bool>,
+    pub version: Option<String>,
+    pub update_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UpdateManifest {
+    version: String,
+    url: String,
 }
 
 #[derive(Debug)]
@@ -257,11 +265,43 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     config.db_name.unwrap_or_default(),
                     config.db_user.unwrap_or_else(|| "root".to_string()),
                     config.db_pass.unwrap_or_default(),
-                    config.has_init_sql.unwrap_or(false)
+                    config.has_init_sql.unwrap_or(false),
+                    config.version,
+                    config.update_url
                 )
             } else {
-                ("index.php".to_string(), "".to_string(), vec![], "none".to_string(), 3307, "".to_string(), "root".to_string(), "".to_string(), false)
+                ("index.php".to_string(), "".to_string(), vec![], "none".to_string(), 3307, "".to_string(), "root".to_string(), "".to_string(), false, None, None)
             };
+
+            if let Some(ref update_url) = update_url {
+                if let Some(ref current_version) = version {
+                    log(&format!("Vérification des mises à jour sur l'URL: {}", update_url));
+                    if let Ok(resp) = ureq::get(update_url).timeout(std::time::Duration::from_secs(3)).call() {
+                        if let Ok(manifest) = resp.into_json::<UpdateManifest>() {
+                            if manifest.version != *current_version {
+                                log(&format!("Nouvelle version trouvée: {} (actuelle: {})", manifest.version, current_version));
+                                let _ = proxy.send_event(UserEvent::Ready("Mise à jour en cours de téléchargement...".to_string()));
+                                let temp_exe = std::env::temp_dir().join(format!("update_{}_{}.exe", file_name, manifest.version));
+                                if let Ok(mut file) = std::fs::File::create(&temp_exe) {
+                                    if let Ok(dl_resp) = ureq::get(&manifest.url).call() {
+                                        let mut reader = dl_resp.into_reader();
+                                        if std::io::copy(&mut reader, &mut file).is_ok() {
+                                            log("Mise à jour téléchargée. Remplacement en cours...");
+                                            if self_replace::self_replace(&temp_exe).is_ok() {
+                                                log("Remplacement réussi. Redémarrage de l'application.");
+                                                let _ = std::process::Command::new(&exe_path).spawn();
+                                                std::process::exit(0);
+                                            } else {
+                                                log("Échec du remplacement de l'exécutable.");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             if !external_dirs.is_empty() {
                 let exe_dir = exe_path.parent().unwrap();

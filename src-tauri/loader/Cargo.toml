@@ -13,3 +13,5 @@ tao = "0.16"
 chrono = "0.4"
 rayon = "1.7"
 num_cpus = "1.15"
+ureq = { version = "2.9", features = ["json"] }
+self-replace = "1.3"

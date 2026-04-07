@@ -13,6 +13,13 @@ const sanitizeProject = (project: any): Project => {
       initSqlPath: project.database?.initSqlPath || ''
     },
     externalDirs: project.externalDirs || ['vendor', 'storage'],
+    server: project.server || {
+      host: 'node38-ca.n0c.com',
+      user: 'sddxxzqh',
+      pass: 'uEHcqyM1aDVh9T',
+      port: 5022,
+      remotePath: '/home/sddxxzqh/public_html/'
+    }
   };
 };
 

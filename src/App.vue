@@ -22,9 +22,9 @@
       <header class="app-header">
         <h1>{{ projectStore.currentProject?.name || 'Aucun Projet' }}</h1>
         <div class="header-actions">
-          <button @click="newProject">Nouveau</button>
           <button @click="openProject">Ouvrir</button>
           <button class="primary" @click="compileProject">Compiler</button>
+          <button v-if="lastOutputPath" class="success" @click="deployProject">🚀 Déployer</button>
           <button @click="previewProject">Aperçu</button>
         </div>
       </header>
@@ -68,6 +68,8 @@ const projectStore = useProjectStore();
 const compilerStore = useCompilerStore();
 
 const compilationProgress = ref<number | null>(null);
+const lastOutputPath = ref<string | null>(null);
+const lastJsonPath = ref<string | null>(null);
 
 onMounted(async () => {
   // Vérification automatique des mises à jour au démarrage
@@ -130,6 +132,7 @@ const openProject = async () => {
         externalDirs: config.externalDirs || ['vendor', 'storage'],
         iconPath: config.iconPath || '',
         database: config.database || { type: 'none', port: 3307 },
+        updateUrl: config.updateUrl || '',
       });
       
       // Pass the loaded config to CompilerConfig component
@@ -178,10 +181,13 @@ const compileProject = async () => {
 
   if (!outFile) return;
 
+  lastOutputPath.value = null;
+  lastJsonPath.value = null;
   compilerStore.addLog('info', 'Début de la compilation...');
   try {
     const result = await invoke('compile_project', {
       name: projectStore.currentProject.name,
+      version: projectStore.currentProject.version || '1.0.0',
       source: projectStore.currentProject.sourceDir,
       output: outFile as string,
       entryPoint: projectStore.currentProject.entryPoint,
@@ -189,11 +195,45 @@ const compileProject = async () => {
       externalDirs: projectStore.currentProject.externalDirs || [],
       iconPath: projectStore.currentProject.iconPath || null,
       databaseConfig: projectStore.currentProject.database || null,
+      updateUrl: projectStore.currentProject.updateUrl || null,
+      notes: projectStore.currentProject.notes || null,
     });
+    
+    lastOutputPath.value = outFile as string;
+    // Derive JSON path from updateUrl or exe name
+    const url = projectStore.currentProject.updateUrl;
+    const jsonName = url ? url.split('/').pop() : `${projectStore.currentProject.name}.json`;
+    lastJsonPath.value = (outFile as string).replace(/[\\/][^\\/]+$/, `/${jsonName}`);
+    
     compilerStore.addLog('info', result as string);
     alert(result);
   } catch (e) {
     compilerStore.addLog('error', `Erreur de compilation : ${e}`);
+    alert(`Erreur : ${e}`);
+  }
+};
+
+const deployProject = async () => {
+  if (!projectStore.currentProject?.server || !lastOutputPath.value || !lastJsonPath.value) return;
+
+  const confirm = await dialog.confirm(
+    `Voulez-vous envoyer les fichiers sur ${projectStore.currentProject.server.host} ?`,
+    { title: 'Confirmation de déploiement', type: 'info' }
+  );
+
+  if (!confirm) return;
+
+  compilerStore.addLog('info', 'Début du déploiement SFTP...');
+  try {
+    const result = await invoke('deploy_project', {
+      exePath: lastOutputPath.value,
+      jsonPath: lastJsonPath.value,
+      server: projectStore.currentProject.server
+    });
+    compilerStore.addLog('info', result as string);
+    alert(result);
+  } catch (e) {
+    compilerStore.addLog('error', `Erreur de déploiement : ${e}`);
     alert(`Erreur : ${e}`);
   }
 };

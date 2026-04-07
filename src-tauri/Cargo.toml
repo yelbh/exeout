@@ -9,7 +9,7 @@ edition = "2021"
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
-tauri = { version = "1.5", features = [ "window-all", "dialog-all", "process-all", "path-all", "fs-all", "shell-all"] }
+tauri = { version = "1.5", features = [ "window-all", "dialog-all", "process-all", "path-all", "fs-all", "shell-all", "updater"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.28", features = ["full"] }
@@ -27,6 +27,8 @@ anyhow = "1.0"
 thiserror = "1.0"
 libc = "0.2"
 libloading = "0.8"
+chrono = "0.4.44"
+ssh2 = "0.9.5"
 
 [features]
 # default = ["custom-protocol"]

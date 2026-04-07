@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write  # Autorise la création de releases et le push de tags
+      
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Nécessaire pour standard-version pour voir l'historique
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Configuration Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Automatic Version Bump
+        id: bump
+        shell: bash
+        run: |
+          # Tentative d'incrémentation basées sur les commits conventionnels
+          if npx standard-version; then
+            VERSION=$(node -p "require('./package.json').version")
+            echo "new_version=$VERSION" >> $GITHUB_OUTPUT
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and Release Tauri App
+        if: steps.bump.outputs.should_release == 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          tagName: v${{ steps.bump.outputs.new_version }}
+          releaseName: 'ExeOutput Studio v${{ steps.bump.outputs.new_version }}'
+          releaseBody: 'Voir les commits pour la liste des changements.'
+          releaseDraft: false
+          prerelease: false
+          uploadUpdaterJson: true
+
+      - name: Prepare and Deploy Update Manifest
+        if: steps.bump.outputs.should_release == 'true'
+        shell: pwsh
+        run: |
+          $jsonFile = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.json" | Select-Object -First 1
+          if ($jsonFile) {
+            Copy-Item $jsonFile.FullName "maj.json"
+            echo "Manifest prepared: maj.json"
+          } else {
+            echo "Error: updater json not found"
+            exit 1
+          }
+
+      - name: Upload to Server via SSH
+        if: steps.bump.outputs.should_release == 'true'
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 5022
+          source: "maj.json"
+          target: "/home/sddxxzqh/public_html/"
+          rm: false
+
+      - name: Push changes and tags back to GitHub
+        if: steps.bump.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          git push --follow-tags

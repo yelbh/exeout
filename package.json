@@ -28,9 +28,32 @@
     "eslint": "^8.56.0",
     "eslint-plugin-vue": "^9.19.2",
     "prettier": "^3.1.1",
+    "standard-version": "^9.5.0",
     "typescript": "^5.3.3",
     "vite": "^5.0.10",
     "vitest": "^1.1.0",
     "vue-tsc": "^1.8.25"
+  },
+  "standard-version": {
+    "packageFiles": [
+      {
+        "filename": "package.json",
+        "type": "json"
+      }
+    ],
+    "bumpFiles": [
+      {
+        "filename": "package.json",
+        "type": "json"
+      },
+      {
+        "filename": "src-tauri/tauri.conf.json",
+        "type": "json"
+      },
+      {
+        "filename": "src-tauri/Cargo.toml",
+        "type": "plain-text"
+      }
+    ]
   }
 }

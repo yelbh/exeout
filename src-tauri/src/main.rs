@@ -31,6 +31,16 @@ struct AppState {
 }
 
 #[derive(serde::Deserialize)]
+struct ServerSettings {
+    host: String,
+    user: String,
+    pass: String,
+    port: u16,
+    #[serde(rename = "remotePath")]
+    remote_path: String,
+}
+
+#[derive(serde::Deserialize)]
 struct DatabaseConfig {
     #[serde(rename = "type")]
     db_type: String, // "none", "sqlite", "mariadb"
@@ -44,14 +54,69 @@ struct DatabaseConfig {
 }
 
 #[tauri::command]
-async fn compile_project(window: tauri::Window, name: String, source: String, output: String, entry_point: String, public_dir: String, external_dirs: Vec<String>, icon_path: Option<String>, database_config: Option<DatabaseConfig>) -> Result<String, String> {
+async fn deploy_project(window: tauri::Window, exe_path: String, json_path: String, server: ServerSettings) -> Result<String, String> {
+    use std::net::TcpStream;
+    use ssh2::Session;
+    use std::io::Read;
+
+    tokio::task::spawn_blocking(move || {
+        let _ = window.emit("compilation-log", format!("Connexion au serveur {}...", server.host));
+        
+        let tcp = TcpStream::connect(format!("{}:{}", server.host, server.port))
+            .map_err(|e| format!("Erreur de connexion TCP : {}", e))?;
+        
+        let mut sess = Session::new().map_err(|e| format!("Erreur session SSH : {}", e))?;
+        sess.set_tcp_stream(tcp);
+        sess.handshake().map_err(|e| format!("Échec du handshake SSH : {}", e))?;
+        
+        sess.userauth_password(&server.user, &server.pass)
+            .map_err(|e| format!("Échec d'authentification : {}", e))?;
+        
+        if !sess.authenticated() {
+            return Err("Accès refusé par le serveur".to_string());
+        }
+
+        let sftp = sess.sftp().map_err(|e| format!("Erreur SFTP : {}", e))?;
+        
+        // 1. Envoyer le .exe
+        let exe_file_path = std::path::Path::new(&exe_path);
+        let exe_name = exe_file_path.file_name().unwrap().to_str().unwrap();
+        let remote_exe = std::path::Path::new(&server.remote_path).join(exe_name);
+        
+        let _ = window.emit("compilation-log", format!("Envoi de {}...", exe_name));
+        let mut local_exe = std::fs::File::open(exe_file_path).map_err(|e| e.to_string())?;
+        let mut remote_exe_file = sftp.create(&remote_exe).map_err(|e| e.to_string())?;
+        std::io::copy(&mut local_exe, &mut remote_exe_file).map_err(|e| e.to_string())?;
+
+        // 2. Envoyer le .json
+        let json_file_path = std::path::Path::new(&json_path);
+        let json_name = json_file_path.file_name().unwrap().to_str().unwrap();
+        let remote_json = std::path::Path::new(&server.remote_path).join(json_name);
+        
+        let _ = window.emit("compilation-log", format!("Envoi de {}...", json_name));
+        let mut local_json = std::fs::File::open(json_file_path).map_err(|e| e.to_string())?;
+        let mut remote_json_file = sftp.create(&remote_json).map_err(|e| e.to_string())?;
+        std::io::copy(&mut local_json, &mut remote_json_file).map_err(|e| e.to_string())?;
+
+        Ok("Déploiement réussi sur votre serveur !".to_string())
+    }).await.map_err(|e| format!("Erreur thread: {}", e))?
+}
+
+#[tauri::command]
+async fn compile_project(window: tauri::Window, name: String, version: String, source: String, output: String, entry_point: String, public_dir: String, external_dirs: Vec<String>, icon_path: Option<String>, database_config: Option<DatabaseConfig>, update_url: Option<String>, notes: Option<String>) -> Result<String, String> {
     let out_path = std::path::Path::new(&output).to_path_buf();
     let out_str = output.clone();
     
     tokio::task::spawn_blocking(move || {
         use crate::compiler::packer::Compiler;
         let mut compiler = Compiler::new(&source, &out_str, &entry_point, &public_dir);
+        compiler.version = version;
         compiler.external_dirs = external_dirs;
+        compiler.notes = notes;
+        
+        if let Some(url) = update_url {
+            compiler.update_url = Some(url);
+        }
         
         if let Some(db) = database_config {
             compiler.db_type = db.db_type;
@@ -73,26 +138,32 @@ async fn compile_project(window: tauri::Window, name: String, source: String, ou
         
         let _ = window.emit("compilation-progress", 0);
         
-        // 1. Collect files (33%)
+        // 1. Collect files (25%)
         let files = compiler.collect_files()
             .map_err(|e| format!("Erreur lors de la collecte : {}", e))?;
         let file_count = files.len();
         let _ = window.emit("compilation-log", format!("{} fichier(s) trouvé(s) à packager", file_count));
-        let _ = window.emit("compilation-progress", 33);
+        let _ = window.emit("compilation-progress", 25);
         
-        // 2. Package resources with progress callback
+        // 2. Package resources (50%)
         let compressed = compiler.compress_resources(files, |pct| {
-            let overall = 33 + (pct * 57 / 100);
+            let overall = 25 + (pct * 50 / 100);
             let _ = window.emit("compilation-progress", overall);
         }).map_err(|e| format!("Erreur lors de la compression : {}", e))?;
         
-        // 3. Generate the final EXE
+        // 3. Generate the final EXE (90%)
         compiler.generate_exe(compressed)
             .map_err(|e| format!("Erreur lors de la génération de l'EXE : {}", e))?;
+        let _ = window.emit("compilation-progress", 90);
+
+        // 4. Generate Update Manifest (100%)
+        let _ = window.emit("compilation-log", "Génération du manifeste de mise à jour...");
+        compiler.generate_update_manifest()
+            .map_err(|e| format!("Erreur lors de la génération du manifeste : {}", e))?;
             
         let _ = window.emit("compilation-progress", 100);
         
-        Ok(format!("Compilation terminée ! Votre exécutable est disponible ici : {}", out_path.display()))
+        Ok(format!("Compilation terminée ! Votre exécutable et son manifeste JSON sont disponibles ici : {}", out_path.parent().unwrap().display()))
     }).await.map_err(|e| format!("Erreur du thread: {}", e))?
 }
 
@@ -340,6 +411,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             compile_project,
+            deploy_project,
             preview_project,
             save_config,
             load_config,

@@ -27,6 +27,7 @@ const IGNORED_EXTENSIONS: &[&str] = &[
 pub struct Compiler {
     pub source_dir: PathBuf,
     pub output_path: PathBuf,
+    pub version: String,
     pub icon_path: Option<PathBuf>,
     pub entry_point: String,
     pub public_dir: String,
@@ -37,6 +38,8 @@ pub struct Compiler {
     pub db_user: String,
     pub db_pass: String,
     pub init_sql_path: Option<PathBuf>,
+    pub update_url: Option<String>,
+    pub notes: Option<String>,
 }
 
 impl Compiler {
@@ -44,6 +47,7 @@ impl Compiler {
         Self {
             source_dir: PathBuf::from(source),
             output_path: PathBuf::from(output),
+            version: "1.0.0".to_string(),
             icon_path: None,
             entry_point: entry_point.to_string(),
             public_dir: public_dir.to_string(),
@@ -54,7 +58,40 @@ impl Compiler {
             db_user: "root".to_string(),
             db_pass: "".to_string(),
             init_sql_path: None,
+            update_url: None,
+            notes: None,
         }
+    }
+
+    pub fn generate_update_manifest(&self) -> Result<()> {
+        if let Some(url) = &self.update_url {
+            let filename = url.split('/').last().unwrap_or("updater.json");
+            if !filename.ends_with(".json") {
+                return Ok(());
+            }
+
+            let mut manifest_path = self.output_path.clone();
+            manifest_path.set_file_name(filename);
+
+            let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            let notes = self.notes.as_deref().unwrap_or("Mise à jour générée par ExeOutput Studio.");
+
+            let manifest = serde_json::json!({
+                "version": self.version,
+                "notes": notes,
+                "pub_date": now,
+                "platforms": {
+                    "windows-x86_64": {
+                        "signature": "...",
+                        "url": url.replace(".json", ".msi.zip")
+                    }
+                }
+            });
+
+            let content = serde_json::to_string_pretty(&manifest)?;
+            fs::write(manifest_path, content)?;
+        }
+        Ok(())
     }
 
     pub fn collect_files(&self) -> Result<Vec<PathBuf>> {
@@ -151,6 +188,7 @@ impl Compiler {
 
             // 3. Add configuration file
             let config = serde_json::json!({
+                "version": self.version,
                 "entry_point": self.entry_point,
                 "public_dir": self.public_dir,
                 "external_dirs": self.external_dirs,
@@ -159,7 +197,8 @@ impl Compiler {
                 "db_name": self.db_name,
                 "db_user": self.db_user,
                 "db_pass": self.db_pass,
-                "has_init_sql": self.init_sql_path.is_some()
+                "has_init_sql": self.init_sql_path.is_some(),
+                "update_url": self.update_url
             });
             let config_json = serde_json::to_vec_pretty(&config)?;
             zip.start_file("exeoutput.json", options)?;

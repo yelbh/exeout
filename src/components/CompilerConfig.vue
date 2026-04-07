@@ -8,6 +8,8 @@
       <button :class="{ active: tab === 'security' }" @click="tab = 'security'">Sécurité</button>
       <button :class="{ active: tab === 'files' }" @click="tab = 'files'">Fichiers</button>
       <button :class="{ active: tab === 'database' }" @click="tab = 'database'">Base de données</button>
+      <button :class="{ active: tab === 'updates' }" @click="tab = 'updates'">Mises à jour</button>
+      <button :class="{ active: tab === 'server_config' }" @click="tab = 'server_config'">Serveur (SFTP)</button>
       <button :class="{ active: tab === 'advanced' }" @click="tab = 'advanced'">Avancé</button>
     </div>
     <div v-if="tab === 'general'" class="tab-content">
@@ -142,6 +144,52 @@
         </div>
       </div>
     </div>
+    <div v-if="tab === 'updates'" class="tab-content">
+      <div class="info-box info">
+        <p>Afin que vos exécutables finaux puissent se mettre à jour tout seuls chez vos clients, vous devez fournir une URL pointant vers un fichier JSON (ex: version.json).</p>
+      </div>
+      <div class="form-group">
+        <label>URL du fichier JSON de mise à jour (Optionnel)</label>
+        <input v-model="store.currentProject!.updateUrl" type="url" placeholder="https://ben-sms.com/maj.json" @change="store.updateProject({ updateUrl: store.currentProject!.updateUrl })" />
+        <small class="hint">Laissez vide pour désactiver la mise à jour automatique.</small>
+      </div>
+      <div class="form-group">
+        <label>Notes de cette version (Affichées à l'utilisateur)</label>
+        <textarea v-model="store.currentProject!.notes" placeholder="Ex: Correction de bugs mineurs, Amélioration de l'interface..." @change="store.updateProject({ notes: store.currentProject!.notes })"></textarea>
+      </div>
+    </div>
+    <div v-if="tab === 'server_config' && store.currentProject" class="tab-content">
+      <h3>Configuration du déploiement SFTP</h3>
+      <p class="description">Configurez les accès pour envoyer automatiquement vos fichiers sur votre serveur.</p>
+      
+      <div class="form-row">
+        <div class="form-group flex-2">
+          <label>Hôte SSH/SFTP</label>
+          <input v-model="store.currentProject.server!.host" type="text" placeholder="ex: node38-ca.n0c.com" />
+        </div>
+        <div class="form-group flex-1">
+          <label>Port</label>
+          <input v-model.number="store.currentProject.server!.port" type="number" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group flex-1">
+          <label>Utilisateur</label>
+          <input v-model="store.currentProject.server!.user" type="text" />
+        </div>
+        <div class="form-group flex-1">
+          <label>Mot de passe</label>
+          <input v-model="store.currentProject.server!.pass" type="password" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Chemin distant (Dossier cible)</label>
+        <input v-model="store.currentProject.server!.remotePath" type="text" placeholder="ex: /home/user/public_html/" />
+        <small class="hint">Le dossier où seront déposés le .exe et le .json</small>
+      </div>
+    </div>
     <div v-if="tab === 'advanced'" class="tab-content">
       <div class="form-group">
         <label>Niveau de compression (0-9)</label>
@@ -159,6 +207,7 @@ import { useCompilerStore } from '../stores/compiler';
 import { invoke } from '@tauri-apps/api/tauri';
 import { CompilerSettings } from '../types/project';
 
+const projectDirs = ref<string[]>([]);
 const store = useProjectStore();
 const compilerStore = useCompilerStore();
 
@@ -166,7 +215,7 @@ interface ExtendedSettings extends CompilerSettings {
   exeName: string;
 }
 
-const tab = ref<'general' | 'php' | 'server' | 'security' | 'files' | 'database' | 'advanced'>('general');
+const tab = ref<'general' | 'php' | 'server' | 'security' | 'files' | 'database' | 'updates' | 'server_config' | 'advanced'>('general');
 const settings = reactive<ExtendedSettings>({
   exeName: 'MonApp',
   phpVersion: '8.2',
@@ -178,7 +227,17 @@ const settings = reactive<ExtendedSettings>({
   externalDirs: ['vendor', 'storage'],
 });
 
-const projectDirs = ref<string[]>([]);
+import { watch } from 'vue';
+
+// Suggestion automatique de l'URL de mise à jour
+watch(() => settings.exeName, (newName) => {
+  if (store.currentProject && (!store.currentProject.updateUrl || store.currentProject.updateUrl.includes('ben-sms.com'))) {
+    const filename = newName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (filename) {
+      store.updateProject({ updateUrl: `https://ben-sms.com/${filename}.json` });
+    }
+  }
+});
 
 const fetchProjectDirs = async () => {
   if (!store.currentProject) return;
@@ -353,7 +412,7 @@ const save = async () => {
 
 .dir-item {
   display: flex;
-  justify_content: space-between;
+  justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
