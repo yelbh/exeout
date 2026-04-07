@@ -41,11 +41,20 @@ jobs:
             VERSION=$(node -p "require('./package.json').version")
             echo "new_version=$VERSION" >> $GITHUB_OUTPUT
             echo "should_release=true" >> $GITHUB_OUTPUT
-            # Synchronisation de la version dans Cargo.toml
-            sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
           else
             echo "should_release=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Sync Cargo.toml version
+        if: steps.bump.outputs.should_release == 'true'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.bump.outputs.new_version }}"
+          $tomlPath = "src-tauri/Cargo.toml"
+          $content = Get-Content $tomlPath
+          $newContent = $content -replace '^version = ".*"', "version = `"$version`""
+          $newContent | Set-Content $tomlPath
+          Write-Host "Cargo.toml synchronized to version $version"
 
       - name: Build and Release Tauri App
         if: steps.bump.outputs.should_release == 'true'

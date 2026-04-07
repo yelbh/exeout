@@ -103,7 +103,7 @@ async fn deploy_project(window: tauri::Window, exe_path: String, json_path: Stri
 }
 
 #[tauri::command]
-async fn compile_project(window: tauri::Window, name: String, version: String, source: String, output: String, entry_point: String, public_dir: String, external_dirs: Vec<String>, icon_path: Option<String>, database_config: Option<DatabaseConfig>, update_url: Option<String>, notes: Option<String>) -> Result<String, String> {
+async fn compile_project(window: tauri::Window, _name: String, version: String, source: String, output: String, entry_point: String, public_dir: String, external_dirs: Vec<String>, icon_path: Option<String>, database_config: Option<DatabaseConfig>, update_url: Option<String>, notes: Option<String>) -> Result<String, String> {
     let out_path = std::path::Path::new(&output).to_path_buf();
     let out_str = output.clone();
     
@@ -283,10 +283,10 @@ async fn preview_project(state: tauri::State<'_, AppState>, source: String, data
     
     // Determine doc root: prioritize source/public if it exists (Laravel style)
     let mut doc_root = source_path.to_path_buf();
-    let mut using_public_subfolder = false;
+    let mut _using_public_subfolder = false;
     if source_path.join("public").is_dir() {
         doc_root = source_path.join("public");
-        using_public_subfolder = true;
+        _using_public_subfolder = true;
     }
 
     // Prepare session path (common fix for login loops in Laravel + php -S)
