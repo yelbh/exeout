@@ -47,10 +47,6 @@
         "type": "json"
       },
       {
-        "filename": "src-tauri/tauri.conf.json",
-        "type": "json"
-      },
-      {
         "filename": "src-tauri/Cargo.toml",
         "type": "plain-text"
       }
