@@ -32,7 +32,7 @@ impl RuntimeGenerator {
         Ok(PathBuf::from("dist/output.exe"))
     }
 
-    pub fn sign_executable(&self, exe_path: &Path) -> Result<()> {
+    pub fn sign_executable(&self, _exe_path: &Path) -> Result<()> {
         // Signing logic (using signtool or similar)
         Ok(())
     }

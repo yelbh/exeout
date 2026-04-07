@@ -1,9 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
 use winapi::um::libloaderapi::GetModuleFileNameW;
-use winapi::um::fileapi::SetFileAttributesW;
-use winapi::um::shellapi::SHGetFileInfoW;
-use winapi::um::winuser::SendMessageW;
 use anyhow::Result;
 
 pub fn get_executable_path() -> Result<PathBuf> {
@@ -16,12 +13,12 @@ pub fn get_executable_path() -> Result<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
-pub fn set_file_hidden(path: &Path) -> Result<()> {
+pub fn set_file_hidden(_path: &Path) -> Result<()> {
     // Implementation using SetFileAttributesW
     Ok(())
 }
 
-pub fn create_shortcut(target: &Path, link_path: &Path) -> Result<()> {
+pub fn create_shortcut(_target: &Path, _link_path: &Path) -> Result<()> {
     // Implementation using COM API
     Ok(())
 }

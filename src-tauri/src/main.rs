@@ -57,7 +57,6 @@ struct DatabaseConfig {
 async fn deploy_project(window: tauri::Window, exe_path: String, json_path: String, server: ServerSettings) -> Result<String, String> {
     use std::net::TcpStream;
     use ssh2::Session;
-    use std::io::Read;
 
     tokio::task::spawn_blocking(move || {
         let _ = window.emit("compilation-log", format!("Connexion au serveur {}...", server.host));
