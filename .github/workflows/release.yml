@@ -75,12 +75,15 @@ jobs:
         if: steps.bump.outputs.should_release == 'true'
         shell: pwsh
         run: |
-          $jsonFile = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.json" | Select-Object -First 1
+          # Recherche récursive du fichier JSON de l'updater
+          $jsonFile = Get-ChildItem -Path "src-tauri/target/release/bundle" -Filter "*.json" -Recurse | Select-Object -First 1
           if ($jsonFile) {
             Copy-Item $jsonFile.FullName "maj.json"
-            echo "Manifest prepared: maj.json"
+            Write-Host "Manifest prepared from $($jsonFile.FullName) -> maj.json"
           } else {
-            echo "Error: updater json not found"
+            Write-Error "Error: updater json not found in bundle directory"
+            # Aide au diagnostic : liste des fichiers générés
+            Get-ChildItem -Path "src-tauri/target/release/bundle" -Recurse
             exit 1
           }
 
