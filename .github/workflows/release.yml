@@ -75,15 +75,18 @@ jobs:
         if: steps.bump.outputs.should_release == 'true'
         shell: pwsh
         run: |
-          # Recherche récursive du fichier JSON de l'updater
-          $jsonFile = Get-ChildItem -Path "src-tauri/target/release/bundle" -Filter "*.json" -Recurse | Select-Object -First 1
-          if ($jsonFile) {
-            Copy-Item $jsonFile.FullName "maj.json"
-            Write-Host "Manifest prepared from $($jsonFile.FullName) -> maj.json"
-          } else {
-            Write-Error "Error: updater json not found in bundle directory"
-            # Aide au diagnostic : liste des fichiers générés
-            Get-ChildItem -Path "src-tauri/target/release/bundle" -Recurse
+          # Recherche récursive globale dans tout le dossier target
+          Get-ChildItem -Path "src-tauri/target" -Filter "*.json" -Recurse | Where-Object { $_.Name -notmatch "package.json|Cargo.toml|manifest.json" } | ForEach-Object {
+            $content = Get-Content $_.FullName | ConvertFrom-Json
+            if ($content.version -and $content.platforms) {
+              Copy-Item $_.FullName "maj.json"
+              Write-Host "Manifest Found: $($_.FullName) -> maj.json"
+              return
+            }
+          }
+          if (!(Test-Path "maj.json")) {
+            Write-Error "Error: updater json not found in target directory"
+            Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*.json"
             exit 1
           }
 
