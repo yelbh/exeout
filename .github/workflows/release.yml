@@ -34,16 +34,20 @@ jobs:
 
       - name: Automatic Version Bump
         id: bump
-        shell: bash
+        shell: pwsh
         run: |
-          # Tentative d'incrémentation basées sur les commits conventionnels
-          if npx standard-version --skip.tag; then
-            VERSION=$(node -p "require('./package.json').version")
-            echo "new_version=$VERSION" >> $GITHUB_OUTPUT
-            echo "should_release=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_release=false" >> $GITHUB_OUTPUT
-          fi
+          # Tentative d'incrémentation basée sur les commits conventionnels
+          $result = npx standard-version --skip.tag
+          if ($LASTEXITCODE -eq 0) {
+            $package = Get-Content package.json | ConvertFrom-Json
+            $version = $package.version
+            echo "new_version=$version" >> $env:GITHUB_OUTPUT
+            echo "should_release=true" >> $env:GITHUB_OUTPUT
+            Write-Host "New version detected: $version"
+          } else {
+            echo "should_release=false" >> $env:GITHUB_OUTPUT
+            Write-Host "No version bump needed."
+          }
 
       - name: Sync Cargo.toml version
         if: steps.bump.outputs.should_release == 'true'
@@ -97,18 +101,24 @@ jobs:
 
       - name: Upload to Server via SSH
         if: steps.bump.outputs.should_release == 'true'
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 5022
-          source: "maj.json"
-          target: "/home/sddxxzqh/public_html/"
-          rm: false
+        shell: pwsh
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USERNAME }}
+          SSH_PORT: 5022
+        run: |
+          $keyFile = "id_rsa_deploy"
+          $SSH_KEY | Out-File -FilePath $keyFile -Encoding ascii
+          
+          # Upload via scp (StrictHostKeyChecking=no évite les prompts interactifs)
+          scp -P $env:SSH_PORT -o StrictHostKeyChecking=no -i $keyFile maj.json "${env:SSH_USER}@${env:SSH_HOST}:/home/sddxxzqh/public_html/"
+          
+          # Nettoyage
+          Remove-Item $keyFile
 
       - name: Push changes and tags back to GitHub
         if: steps.bump.outputs.should_release == 'true'
-        shell: bash
+        shell: pwsh
         run: |
           git push --follow-tags
