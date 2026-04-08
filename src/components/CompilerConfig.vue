@@ -190,7 +190,6 @@
         <input v-model="store.currentProject.server!.remotePath" type="text" placeholder="ex: /home/user/public_html/" />
         <small class="hint">Le dossier où seront déposés le .exe et le .json</small>
       </div>
-      </div>
     </div>
     <div v-if="tab === 'environment' && store.currentProject" class="tab-content">
       <h3>Variables d'Environnement Externes</h3>
