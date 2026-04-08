@@ -9,6 +9,7 @@ use std::process::{Command, Stdio};
 use std::os::windows::process::CommandExt;
 use std::time::UNIX_EPOCH;
 use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, HashSet};
 use serde::Deserialize;
 use tao::dpi::LogicalSize;
 
@@ -53,6 +54,48 @@ fn log(msg: &str) {
             let _ = writeln!(file, "[{}] {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), msg);
         }
     }
+}
+
+fn save_external_env(updates: std::collections::HashMap<String, String>) -> io::Result<()> {
+    let exe_path = env::current_exe()?;
+    let env_path = exe_path.parent().unwrap().join(".env");
+    
+    let mut lines = Vec::new();
+    let mut updated_keys = std::collections::HashSet::new();
+
+    if env_path.exists() {
+        let file = File::open(&env_path)?;
+        let reader = BufReader::new(file);
+        for line_res in reader.lines() {
+            let line = line_res?;
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                lines.push(line);
+                continue;
+            }
+
+            if let Some(pos) = trimmed.find('=') {
+                let key = trimmed[..pos].trim().to_string();
+                if let Some(new_val) = updates.get(&key) {
+                    lines.push(format!("{}={}", key, new_val));
+                    updated_keys.insert(key);
+                } else {
+                    lines.push(line);
+                }
+            } else {
+                lines.push(line);
+            }
+        }
+    }
+
+    for (key, val) in updates {
+        if !updated_keys.contains(&key) {
+            lines.push(format!("{}={}", key, val));
+        }
+    }
+
+    fs::write(env_path, lines.join("\n"))?;
+    Ok(())
 }
 
 fn update_env_file(path: &std::path::Path, updates: Vec<(&str, String)>) -> io::Result<()> {
@@ -125,6 +168,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let event_loop = EventLoop::<UserEvent>::with_user_event();
     let proxy = event_loop.create_proxy();
+    let proxy_ipc = proxy.clone();
 
     let window = WindowBuilder::new()
         .with_title(&window_title)
@@ -150,6 +194,25 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let webview = WebViewBuilder::new(window)?
         .with_html(splash_html)?
+        .with_initialization_script(r#"
+            window.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+                    window.ipc.postMessage('open_settings');
+                }
+            });
+        "#)
+        .with_ipc_handler(move |_, req| {
+            if req == "open_settings" {
+                let _ = proxy_ipc.send_event(UserEvent::Ready("SETTINGS".to_string()));
+            } else if req.starts_with("save_settings:") {
+                let json = &req["save_settings:".len()..];
+                if let Ok(updates) = serde_json::from_str::<std::collections::HashMap<String, String>>(json) {
+                    let _ = save_external_env(updates);
+                    // Reload the app to apply changes
+                    let _ = proxy_ipc.send_event(UserEvent::Ready("RELOAD".to_string()));
+                }
+            }
+        })
         .build()?;
 
     // Background Worker
@@ -252,7 +315,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             
             let config_path = temp_dir.join("exeoutput.json");
-            let (entry_point, public_dir, external_dirs, db_type, db_port, db_name, db_user, db_pass, has_init_sql) = if config_path.exists() {
+            let (entry_point, public_dir, external_dirs, db_type, db_port, db_name, db_user, db_pass, has_init_sql, version, update_url) = if config_path.exists() {
                 let content = fs::read_to_string(&config_path)?;
                 let config: Config = serde_json::from_str(&content)
                     .map_err(|e| format!("Erreur de configuration (JSON invalide) : {}", e))?;
@@ -502,9 +565,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 return Err(format!("Le point d'entrée '{}' est introuvable (tenté dans {}).", entry_point, web_root.display()).into());
             }
             
+            // Fix double public/ entry point in URL
             // Mise à jour intelligente du fichier .env
             let env_file = temp_dir.join(".env");
-            if db_type == "mariadb" {
+            let external_env = exe_path.parent().unwrap().join(".env");
+            let mut using_external_env = false;
+            
+            if external_env.exists() {
+                log("Fichier .env externe détecté à côté de l'exécutable. Application prioritaire...");
+                if fs::copy(&external_env, &env_file).is_ok() {
+                    using_external_env = true;
+                    log(".env externe appliqué avec succès.");
+                }
+            }
+
+            if db_type == "mariadb" && !using_external_env {
                 let mut updates = vec![
                     ("DB_CONNECTION", "mysql".to_string()),
                     ("DB_HOST", "127.0.0.1".to_string()),
@@ -572,13 +647,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                .arg("-d").arg("error_reporting=E_ALL")
                .current_dir(&temp_dir);
                
-            if db_type == "mariadb" {
+            if db_type == "mariadb" && !using_external_env {
                 cmd.env("DB_HOST", "127.0.0.1");
                 cmd.env("DB_PORT", db_port.to_string());
                 cmd.env("DB_DATABASE", &db_name);
                 cmd.env("DB_USERNAME", &db_user);
                 cmd.env("DB_PASSWORD", &db_pass);
-            } else if db_type == "sqlite" {
+            } else if db_type == "sqlite" && !using_external_env {
                 let db_path = temp_dir.join("database.sqlite");
                 cmd.env("DB_DATABASE", db_path.to_str().unwrap());
             }
@@ -678,12 +753,89 @@ echo "--- FIN DU DIAGNOSTIC ---\n\n";
         }
     });
 
+    fn location_reload(webview: &wry::webview::WebView) {
+        let _ = webview.evaluate_script("location.reload()");
+    }
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
             Event::UserEvent(UserEvent::Ready(url)) => {
-                webview.load_url(&url);
+                if url == "RELOAD" {
+                   location_reload(&webview);
+                } else if url == "SETTINGS" {
+                    let _ = webview.window().set_title("Configuration du Poste");
+                    let settings_html = r#"
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <meta charset="UTF-8">
+                            <style>
+                                body { font-family: system-ui; padding: 20px; background: #f8fafc; color: #1e293b; }
+                                .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); max-width: 500px; margin: auto; }
+                                h1 { font-size: 1.25rem; margin-top: 0; }
+                                .form-group { margin-bottom: 15px; }
+                                label { display: block; margin-bottom: 5px; font-size: 0.875rem; color: #64748b; }
+                                input { width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 4px; box-sizing: border-box; }
+                                button { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 10px; }
+                                .back-btn { background: transparent; color: #64748b; border: 1px solid #e2e8f0; margin-top: 10px; }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="card">
+                                <h1>Configuration du Poste</h1>
+                                <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 20px;">Modifiez les variables d'environnement de cette station.</p>
+                                <div id="fields"></div>
+                                <button onclick="save()">Sauvegarder et Redémarrer</button>
+                                <button class="back-btn" onclick="location.reload()">Annuler</button>
+                            </div>
+                            <script>
+                                function parseEnv(text) {
+                                    const config = {};
+                                    text.split('\n').forEach(line => {
+                                        const trimmed = line.trim();
+                                        if (trimmed && !trimmed.startsWith('#')) {
+                                            const pos = trimmed.indexOf('=');
+                                            if (pos > 0) {
+                                                const key = trimmed.substring(0, pos).trim();
+                                                const val = trimmed.substring(pos + 1).trim();
+                                                config[key] = val;
+                                            }
+                                        }
+                                    });
+                                    return config;
+                                }
+
+                                const defaultKeys = ["DB_HOST", "STATION_NAME", "APP_DEBUG"];
+                                const fields = document.getElementById('fields');
+                                
+                                defaultKeys.forEach(key => {
+                                    fields.innerHTML += `
+                                        <div class="form-group">
+                                            <label>${key}</label>
+                                            <input type="text" id="${key}" value="">
+                                        </div>
+                                    `;
+                                });
+
+                                function save() {
+                                    const updates = {};
+                                    document.querySelectorAll('#fields input').forEach(input => {
+                                        updates[input.id] = input.value;
+                                    });
+                                    window.ipc.postMessage('save_settings:' + JSON.stringify(updates));
+                                }
+                            </script>
+                        </body>
+                        </html>
+                    "#;
+                    let escaped_html = settings_html.replace("`", "\\`").replace("${", "\\${");
+                    let script = format!("document.open(); document.write(`{}`); document.close();", escaped_html);
+                    let _ = webview.evaluate_script(&script);
+                } else {
+                    webview.load_url(&url);
+                }
             }
             Event::UserEvent(UserEvent::FatalError(err)) => {
                 let _ = msgbox::create("ExeOutput Runtime Error", &err, msgbox::IconType::Error);

@@ -10,6 +10,7 @@
       <button :class="{ active: tab === 'database' }" @click="tab = 'database'">Base de données</button>
       <button :class="{ active: tab === 'updates' }" @click="tab = 'updates'">Mises à jour</button>
       <button :class="{ active: tab === 'server_config' }" @click="tab = 'server_config'">Serveur (SFTP)</button>
+      <button :class="{ active: tab === 'environment' }" @click="tab = 'environment'">Environnement (.env)</button>
       <button :class="{ active: tab === 'advanced' }" @click="tab = 'advanced'">Avancé</button>
     </div>
     <div v-if="tab === 'general'" class="tab-content">
@@ -189,6 +190,25 @@
         <input v-model="store.currentProject.server!.remotePath" type="text" placeholder="ex: /home/user/public_html/" />
         <small class="hint">Le dossier où seront déposés le .exe et le .json</small>
       </div>
+      </div>
+    </div>
+    <div v-if="tab === 'environment' && store.currentProject" class="tab-content">
+      <h3>Variables d'Environnement Externes</h3>
+      <p class="description">Définissez ici les variables qui seront mises dans le fichier <code>.env.template</code> pour chaque station (ex: DB_HOST, STATION_NAME).</p>
+      
+      <div class="env-vars-editor">
+        <div v-for="(val, key) in store.currentProject.envVars" :key="key" class="env-var-row">
+          <input :value="key" type="text" placeholder="CLE" @change="updateEnvKey(key, $event)" />
+          <span>=</span>
+          <input :value="val" type="text" placeholder="Valeur par défaut" @change="updateEnvValue(key, $event)" />
+          <button class="remove-btn" @click="removeEnvVar(key)">×</button>
+        </div>
+        <button class="add-btn" @click="addEnvVar">+ Ajouter une variable</button>
+      </div>
+
+      <div class="info-box info" style="margin-top: 2rem;">
+        <p><strong>Note :</strong> Ces variables seront éditables directement sur chaque poste via l'interface de configuration de l'application (Ctrl+Shift+S).</p>
+      </div>
     </div>
     <div v-if="tab === 'advanced'" class="tab-content">
       <div class="form-group">
@@ -215,7 +235,7 @@ interface ExtendedSettings extends CompilerSettings {
   exeName: string;
 }
 
-const tab = ref<'general' | 'php' | 'server' | 'security' | 'files' | 'database' | 'updates' | 'server_config' | 'advanced'>('general');
+const tab = ref<'general' | 'php' | 'server' | 'security' | 'files' | 'database' | 'updates' | 'server_config' | 'environment' | 'advanced'>('general');
 const settings = reactive<ExtendedSettings>({
   exeName: 'MonApp',
   phpVersion: '8.2',
@@ -259,6 +279,40 @@ const toggleExternal = (dir: string) => {
     current.push(dir);
   }
   store.updateProject({ externalDirs: current });
+};
+
+const addEnvVar = () => {
+  if (!store.currentProject) return;
+  const current = { ...store.currentProject.envVars };
+  current['NOUVELLE_VAR'] = 'valeur';
+  store.updateProject({ envVars: current });
+};
+
+const removeEnvVar = (key: string) => {
+  if (!store.currentProject) return;
+  const current = { ...store.currentProject.envVars };
+  delete current[key];
+  store.updateProject({ envVars: current });
+};
+
+const updateEnvKey = (oldKey: string, event: any) => {
+  if (!store.currentProject) return;
+  const newKey = event.target.value.trim().toUpperCase();
+  if (!newKey || newKey === oldKey) return;
+  
+  const current = { ...store.currentProject.envVars };
+  const val = current[oldKey];
+  delete current[oldKey];
+  current[newKey] = val;
+  store.updateProject({ envVars: current });
+};
+
+const updateEnvValue = (key: string, event: any) => {
+  if (!store.currentProject) return;
+  const newVal = event.target.value;
+  const current = { ...store.currentProject.envVars };
+  current[key] = newVal;
+  store.updateProject({ envVars: current });
 };
 
 onMounted(async () => {
@@ -470,6 +524,32 @@ select {
   color: var(--text-main);
 }
 
+.env-var-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.env-var-row input {
+  flex: 1;
+}
+
+.remove-btn {
+  background: var(--error) !important;
+  width: auto !important;
+  padding: 0.5rem 1rem !important;
+}
+
+.add-btn {
+  background: var(--bg-dark);
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  width: 100%;
+  padding: 0.75rem;
+  margin-top: 1rem;
+}
+
 .save-btn {
   width: 100%;
   padding: 1rem;
@@ -477,5 +557,6 @@ select {
   color: white;
   border: none;
   font-weight: 600;
+  margin-top: 2rem;
 }
 </style>

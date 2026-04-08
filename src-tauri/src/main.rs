@@ -102,7 +102,7 @@ async fn deploy_project(window: tauri::Window, exe_path: String, json_path: Stri
 }
 
 #[tauri::command]
-async fn compile_project(window: tauri::Window, _name: String, version: String, source: String, output: String, entry_point: String, public_dir: String, external_dirs: Vec<String>, icon_path: Option<String>, database_config: Option<DatabaseConfig>, update_url: Option<String>, notes: Option<String>) -> Result<String, String> {
+async fn compile_project(window: tauri::Window, _name: String, version: String, source: String, output: String, entry_point: String, public_dir: String, external_dirs: Vec<String>, icon_path: Option<String>, database_config: Option<DatabaseConfig>, update_url: Option<String>, notes: Option<String>, env_vars: std::collections::HashMap<String, String>) -> Result<String, String> {
     let out_path = std::path::Path::new(&output).to_path_buf();
     let out_str = output.clone();
     
@@ -112,6 +112,7 @@ async fn compile_project(window: tauri::Window, _name: String, version: String, 
         compiler.version = version;
         compiler.external_dirs = external_dirs;
         compiler.notes = notes;
+        compiler.env_vars = env_vars;
         
         if let Some(url) = update_url {
             compiler.update_url = Some(url);

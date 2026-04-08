@@ -19,6 +19,10 @@ const sanitizeProject = (project: any): Project => {
       pass: 'uEHcqyM1aDVh9T',
       port: 5022,
       remotePath: '/home/sddxxzqh/public_html/'
+    },
+    envVars: project.envVars || {
+      "DB_HOST": "127.0.0.1",
+      "STATION_NAME": "STATION-01"
     }
   };
 };

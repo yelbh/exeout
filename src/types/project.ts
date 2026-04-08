@@ -11,6 +11,7 @@ export interface Project {
   updateUrl?: string;
   notes?: string;
   server?: ServerConfig;
+  envVars: Record<string, string>;
 }
 
 export interface ServerConfig {

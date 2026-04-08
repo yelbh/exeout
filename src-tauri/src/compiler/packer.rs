@@ -40,6 +40,7 @@ pub struct Compiler {
     pub init_sql_path: Option<PathBuf>,
     pub update_url: Option<String>,
     pub notes: Option<String>,
+    pub env_vars: std::collections::HashMap<String, String>,
 }
 
 impl Compiler {
@@ -60,6 +61,7 @@ impl Compiler {
             init_sql_path: None,
             update_url: None,
             notes: None,
+            env_vars: std::collections::HashMap::new(),
         }
     }
 
@@ -264,6 +266,17 @@ impl Compiler {
             if sql_path.exists() {
                 fs::copy(sql_path, dest_sql)?;
             }
+        }
+
+        // Generate template .env if we have external variables
+        if !self.env_vars.is_empty() {
+            let env_path = exe_name.parent().unwrap().join(".env.template");
+            let mut content = String::new();
+            content.push_str("# Modèle de configuration pour cette station\n");
+            for (key, val) in &self.env_vars {
+                content.push_str(&format!("{}={}\n", key, val));
+            }
+            fs::write(env_path, content)?;
         }
 
         Ok(())

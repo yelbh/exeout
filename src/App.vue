@@ -133,6 +133,7 @@ const openProject = async () => {
         iconPath: config.iconPath || '',
         database: config.database || { type: 'none', port: 3307 },
         updateUrl: config.updateUrl || '',
+        envVars: config.envVars || { "DB_HOST": "127.0.0.1", "STATION_NAME": "STATION-01" },
       });
       
       // Pass the loaded config to CompilerConfig component
@@ -197,6 +198,7 @@ const compileProject = async () => {
       databaseConfig: projectStore.currentProject.database || null,
       updateUrl: projectStore.currentProject.updateUrl || null,
       notes: projectStore.currentProject.notes || null,
+      envVars: projectStore.currentProject.envVars || {},
     });
     
     lastOutputPath.value = outFile as string;

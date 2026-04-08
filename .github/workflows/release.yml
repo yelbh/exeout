@@ -99,23 +99,17 @@ jobs:
             exit 1
           }
 
-      - name: Upload to Server via SSH
+      - name: Upload to Server via SFTP
         if: steps.bump.outputs.should_release == 'true'
-        shell: pwsh
-        env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USERNAME }}
-          SSH_PORT: 5022
-        run: |
-          $keyFile = "id_rsa_deploy"
-          $SSH_KEY | Out-File -FilePath $keyFile -Encoding ascii
-          
-          # Upload via scp (StrictHostKeyChecking=no évite les prompts interactifs)
-          scp -P $env:SSH_PORT -o StrictHostKeyChecking=no -i $keyFile maj.json "${env:SSH_USER}@${env:SSH_HOST}:/home/sddxxzqh/public_html/"
-          
-          # Nettoyage
-          Remove-Item $keyFile
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 5022
+          source: "maj.json"
+          target: "/home/sddxxzqh/public_html/"
+          strip_components: 0
 
       - name: Push changes and tags back to GitHub
         if: steps.bump.outputs.should_release == 'true'
