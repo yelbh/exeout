@@ -1,9 +1,26 @@
 # ExeOutput Studio
 
-Studio pour la création d'applications desktop basées sur PHP.
+- [x] Compilation d'applications PHP/Laravel en fichiers `.exe` uniques.
+- [x] Support des domaines virtuels et ports personnalisés.
+- [x] Système de mise à jour automatique intégré.
+- [x] Gestion des versions PHP multiples (8.1, 8.2, 8.3).
+- [x] Configuration multi-postes dynamique via `.env` et interface native (`Ctrl+Shift+S`).
 
-## Nouveautés
-- **Configuration Multi-Postes** : Appuyez sur `Ctrl+Shift+S` dans vos applications générées pour modifier le `.env` de la station de travail.
+## ⚠️ Limitations & Conseils Techniques
+
+### Projets Laravel / Composer (Autoloading)
+Sur Windows, l'utilisation de **Dossiers Externes** (`data/`) repose sur des jonctions de répertoires. 
+> [!IMPORTANT]
+> Pour les projets utilisant Composer (comme Laravel), le dossier `vendor` **ne doit pas** être marqué comme externe si le reste du code source (`app/`, `config/`, etc.) est inclus dans l'exécutable. 
+> 
+> **Pourquoi ?** L'autoloading PSR-4 utilise des chemins relatifs (`vendor/../../app`). Si `vendor` est une jonction vers le disque physique et `app` est dans un dossier temporaire, PHP ne pourra pas résoudre le chemin relatif.
+> 
+> **Solution** : Gardez toujours `vendor` à l'intérieur de l'EXE.
+
+### Mise à jour Automatique
+L'application vérifie la présence d'un fichier JSON distant. Pour tester, incrémentez la version dans `package.json` et faites un push sur `main`.
+
+## Installation (Studio)
 - **Déploiement Automatisé** : Support SFTP intégré via GitHub Actions.
 environnement de développement pour compiler des applications PHP en exécutables Windows indépendants.
 

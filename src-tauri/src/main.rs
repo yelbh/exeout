@@ -402,6 +402,13 @@ async fn validate_php_syntax(_code: String) -> Result<bool, String> {
     Ok(true)
 }
 
+#[tauri::command]
+async fn check_laravel(path: String) -> Result<bool, String> {
+    let p = std::path::Path::new(&path);
+    // On vérifie la présence de artisan ou composer.json
+    Ok(p.join("artisan").exists() || p.join("composer.json").exists())
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(AppState {
@@ -418,7 +425,8 @@ fn main() {
             get_project_dirs,
             get_php_versions,
             get_file_list,
-            validate_php_syntax
+            validate_php_syntax,
+            check_laravel
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

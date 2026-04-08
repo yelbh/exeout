@@ -53,6 +53,10 @@
         <div v-if="projectDirs.length === 0" class="loading-dirs">Chargement des dossiers du projet...</div>
         
         <div v-else class="dirs-list">
+          <div v-if="isLaravel && store.currentProject?.externalDirs.includes('vendor')" class="info-box error" style="margin: 1rem;">
+            <p><strong>Alerte de compatibilité :</strong> Vous avez configuré <code>vendor</code> comme dossier externe dans un projet Laravel/Composer. Cela va casser l'autoloading de PHP (Failed to open stream). Veuillez inclure <code>vendor</code> dans l'EXE pour garantir le fonctionnement.</p>
+          </div>
+
           <div v-for="dir in projectDirs" :key="dir" class="dir-item">
             <label class="checkbox-container">
               <input type="checkbox" :checked="store.currentProject?.externalDirs.includes(dir)" @change="toggleExternal(dir)" />
@@ -227,6 +231,7 @@ import { invoke } from '@tauri-apps/api/tauri';
 import { CompilerSettings } from '../types/project';
 
 const projectDirs = ref<string[]>([]);
+const isLaravel = ref(false);
 const store = useProjectStore();
 const compilerStore = useCompilerStore();
 
@@ -263,6 +268,7 @@ const fetchProjectDirs = async () => {
   try {
     const dirs: string[] = await invoke('get_project_dirs', { path: store.currentProject.sourceDir });
     projectDirs.value = dirs;
+    isLaravel.value = await invoke('check_laravel', { path: store.currentProject.sourceDir });
   } catch (e) {
     console.error(e);
   }
