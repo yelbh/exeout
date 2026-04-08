@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.4.0](https://github.com/yelbh/exeout/compare/v1.3.0...v1.4.0) (2026-04-08)
+
+
+### Features
+
+* add Laravel detection and safety warning for external vendor ([f5d0b08](https://github.com/yelbh/exeout/commit/f5d0b080ec074ede7c81439af3947d99481518e5))
+
 ## [1.3.0](https://github.com/yelbh/exeout/compare/v1.2.0...v1.3.0) (2026-04-08)
 
 
