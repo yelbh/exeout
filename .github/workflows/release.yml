@@ -75,18 +75,23 @@ jobs:
         if: steps.bump.outputs.should_release == 'true'
         shell: pwsh
         run: |
-          # Recherche récursive globale dans tout le dossier target
-          Get-ChildItem -Path "src-tauri/target" -Filter "*.json" -Recurse | Where-Object { $_.Name -notmatch "package.json|Cargo.toml|manifest.json" } | ForEach-Object {
-            $content = Get-Content $_.FullName | ConvertFrom-Json
-            if ($content.version -and $content.platforms) {
-              Copy-Item $_.FullName "maj.json"
-              Write-Host "Manifest Found: $($_.FullName) -> maj.json"
-              return
-            }
+          Write-Host "Recherche exhaustive du manifeste..."
+          # Recherche dans TOUT le dépôt pour être sûr de ne rien rater
+          Get-ChildItem -Path "." -Filter "*.json" -Recurse | ForEach-Object {
+            try {
+              $content = Get-Content $_.FullName -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+              if ($content.version -and $content.platforms) {
+                Copy-Item $_.FullName "maj.json"
+                Write-Host "MANIFESTE TROUVÉ ! Chemin: $($_.FullName)"
+                return
+              }
+            } catch { }
           }
+          
           if (!(Test-Path "maj.json")) {
-            Write-Error "Error: updater json not found in target directory"
-            Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*.json"
+            Write-Error "CRITICAL: updater json not found anywhere in the workspace!"
+            Write-Host "Listing all JSON files for diagnostic:"
+            Get-ChildItem -Path "." -Filter "*.json" -Recurse | Select-Object FullName
             exit 1
           }
 
