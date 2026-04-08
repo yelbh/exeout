@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           # Tentative d'incrémentation basées sur les commits conventionnels
-          if npx standard-version; then
+          if npx standard-version --skip.tag; then
             VERSION=$(node -p "require('./package.json').version")
             echo "new_version=$VERSION" >> $GITHUB_OUTPUT
             echo "should_release=true" >> $GITHUB_OUTPUT
