@@ -1,6 +1,11 @@
 # ExeOutput Studio
 
-ExeOutput Studio est un environnement de développement pour compiler des applications PHP en exécutables Windows indépendants.
+Studio pour la création d'applications desktop basées sur PHP.
+
+## Nouveautés
+- **Configuration Multi-Postes** : Appuyez sur `Ctrl+Shift+S` dans vos applications générées pour modifier le `.env` de la station de travail.
+- **Déploiement Automatisé** : Support SFTP intégré via GitHub Actions.
+environnement de développement pour compiler des applications PHP en exécutables Windows indépendants.
 
 ## Prérequis
 - Node.js 18+
