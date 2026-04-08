@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.6.0](https://github.com/yelbh/exeout/compare/v1.5.0...v1.6.0) (2026-04-08)
+
+
+### Features
+
+* implement junction bridge for external vendor optimization ([b698ee7](https://github.com/yelbh/exeout/commit/b698ee7b79d2de8c670ee63c2331f04fb653e35a))
+
 ## [1.5.0](https://github.com/yelbh/exeout/compare/v1.4.0...v1.5.0) (2026-04-08)
 
 
