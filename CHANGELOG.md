@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.5.0](https://github.com/yelbh/exeout/compare/v1.4.0...v1.5.0) (2026-04-08)
+
+
+### Features
+
+* interactive update notification with notes and progress ([491b17c](https://github.com/yelbh/exeout/commit/491b17cd92753e6de3c5fad3385beb3876289bc1))
+
 ## [1.4.0](https://github.com/yelbh/exeout/compare/v1.3.0...v1.4.0) (2026-04-08)
 
 
