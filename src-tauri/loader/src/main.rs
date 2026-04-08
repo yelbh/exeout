@@ -98,6 +98,31 @@ fn save_external_env(updates: std::collections::HashMap<String, String>) -> io::
     Ok(())
 }
 
+fn load_external_env() -> HashMap<String, String> {
+    let mut config = HashMap::new();
+    if let Ok(exe_path) = env::current_exe() {
+        let env_path = exe_path.parent().unwrap().join(".env");
+        if env_path.exists() {
+            if let Ok(file) = File::open(env_path) {
+                let reader = BufReader::new(file);
+                for line_res in reader.lines() {
+                    if let Ok(line) = line_res {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                            if let Some(pos) = trimmed.find('=') {
+                                let key = trimmed[..pos].trim().to_string();
+                                let val = trimmed[pos + 1..].trim().to_string();
+                                config.insert(key, val);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    config
+}
+
 fn update_env_file(path: &std::path::Path, updates: Vec<(&str, String)>) -> io::Result<()> {
     let mut new_lines = Vec::new();
     let mut keys_to_add: std::collections::HashSet<String> = updates.iter().map(|(k, _)| k.to_string()).collect();
@@ -683,21 +708,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             
             // --- DIAGNOSTIC AUTOMATIQUE ---
             let health_script_path = web_root.join("health_check_internal.php");
-            let health_script_content = format!(r#"<?php
-$db_host = '127.0.0.1';
-$db_port = '{}';
-$db_user = '{}';
-$db_pass = '{}';
-$db_name = '{}';
-
-echo "\n--- RAPPORT DE DIAGNOSTIC ---\n";
+            let db_check = if db_type != "none" {
+                format!(r#"
 try {{
     $pdo = new PDO("mysql:host=$db_host;port=$db_port;dbname=$db_name", $db_user, $db_pass, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
     ]);
     echo "DB: Connexion REUSSIE\n";
     
-    // Vérifier les tables
     $stmt = $pdo->query("SHOW TABLES LIKE 'users'");
     if ($stmt->rowCount() > 0) {{
         $stmt = $pdo->query("SELECT COUNT(*) FROM users");
@@ -709,6 +727,20 @@ try {{
 }} catch (Exception $e) {{
     echo "DB: ERREUR = " . $e->getMessage() . "\n";
 }}
+"#)
+            } else {
+                "echo \"DB: Desactivce (Type: none)\n\";".to_string()
+            };
+
+            let health_script_content = format!(r#"<?php
+$db_host = '127.0.0.1';
+$db_port = '{}';
+$db_user = '{}';
+$db_pass = '{}';
+$db_name = '{}';
+
+echo "\n--- RAPPORT DE DIAGNOSTIC ---\n";
+{}
 
 $storage = __DIR__ . '/../storage/framework/sessions';
 if (!is_dir($storage)) {{
@@ -727,7 +759,7 @@ if (preg_match('/APP_KEY=/', $env)) {{
     echo "ENV: ATTENTION - APP_KEY ABSENTE !\n";
 }}
 echo "--- FIN DU DIAGNOSTIC ---\n\n";
-"#, db_port, db_user, db_pass, db_name);
+"#, db_port, db_user, db_pass, db_name, db_check);
             
             let _ = fs::write(&health_script_path, health_script_content);
             
@@ -773,64 +805,98 @@ echo "--- FIN DU DIAGNOSTIC ---\n\n";
                             <meta charset="UTF-8">
                             <style>
                                 body { font-family: system-ui; padding: 20px; background: #f8fafc; color: #1e293b; }
-                                .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); max-width: 500px; margin: auto; }
-                                h1 { font-size: 1.25rem; margin-top: 0; }
-                                .form-group { margin-bottom: 15px; }
+                                .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); max-width: 600px; margin: auto; }
+                                h1 { font-size: 1.25rem; margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
+                                .form-group { margin-bottom: 15px; display: flex; gap: 10px; align-items: flex-end; }
+                                .field-col { flex: 1; }
                                 label { display: block; margin-bottom: 5px; font-size: 0.875rem; color: #64748b; }
-                                input { width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 4px; box-sizing: border-box; }
-                                button { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 10px; }
-                                .back-btn { background: transparent; color: #64748b; border: 1px solid #e2e8f0; margin-top: 10px; }
+                                input { width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 4px; box-sizing: border-box; font-family: monospace; }
+                                button { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: 600; }
+                                .btn-save { width: 100%; margin-top: 20px; }
+                                .btn-add { background: #10b981; padding: 5px 10px; font-size: 0.75rem; }
+                                .btn-remove { background: #ef4444; padding: 8px; margin-bottom: 0; }
+                                .back-btn { background: transparent; color: #64748b; border: 1px solid #e2e8f0; margin-top: 10px; width: 100%; }
                             </style>
                         </head>
                         <body>
                             <div class="card">
-                                <h1>Configuration du Poste</h1>
+                                <h1>
+                                    Configuration .env
+                                    <button class="btn-add" onclick="addField()">+ Ajouter</button>
+                                </h1>
                                 <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 20px;">Modifiez les variables d'environnement de cette station.</p>
                                 <div id="fields"></div>
-                                <button onclick="save()">Sauvegarder et Redémarrer</button>
+                                <button class="btn-save" onclick="save()">Sauvegarder et Redémarrer</button>
                                 <button class="back-btn" onclick="location.reload()">Annuler</button>
                             </div>
                             <script>
-                                function parseEnv(text) {
-                                    const config = {};
-                                    text.split('\n').forEach(line => {
-                                        const trimmed = line.trim();
-                                        if (trimmed && !trimmed.startsWith('#')) {
-                                            const pos = trimmed.indexOf('=');
-                                            if (pos > 0) {
-                                                const key = trimmed.substring(0, pos).trim();
-                                                const val = trimmed.substring(pos + 1).trim();
-                                                config[key] = val;
-                                            }
-                                        }
-                                    });
-                                    return config;
-                                }
+                                let currentConfig = {};
+                                
+                                try {
+                                    currentConfig = JSON.parse('CONFIG_JSON');
+                                } catch (e) { console.error(e); }
 
-                                const defaultKeys = ["DB_HOST", "STATION_NAME", "APP_DEBUG"];
                                 const fields = document.getElementById('fields');
                                 
-                                defaultKeys.forEach(key => {
-                                    fields.innerHTML += `
-                                        <div class="form-group">
-                                            <label>${key}</label>
-                                            <input type="text" id="${key}" value="">
-                                        </div>
-                                    `;
-                                });
+                                function render() {
+                                    fields.innerHTML = '';
+                                    Object.entries(currentConfig).forEach(([key, val]) => {
+                                        const div = document.createElement('div');
+                                        div.className = 'form-group';
+                                        div.innerHTML = `
+                                            <div class="field-col">
+                                                <label>CLÉ</label>
+                                                <input type="text" class="key-input" value="${key}" onchange="updateKey('${key}', this.value)">
+                                            </div>
+                                            <div class="field-col">
+                                                <label>VALEUR</label>
+                                                <input type="text" class="val-input" value="${val}" id="val-${key}">
+                                            </div>
+                                            <button class="btn-remove" onclick="removeField('${key}')">×</button>
+                                        `;
+                                        fields.appendChild(div);
+                                    });
+                                }
+
+                                function updateKey(oldKey, newKey) {
+                                    if (oldKey === newKey) return;
+                                    const val = currentConfig[oldKey];
+                                    delete currentConfig[oldKey];
+                                    currentConfig[newKey] = val;
+                                    render();
+                                }
+
+                                function addField() {
+                                    const key = "NOUVELLE_VAR_" + Object.keys(currentConfig).length;
+                                    currentConfig[key] = "";
+                                    render();
+                                }
+
+                                function removeField(key) {
+                                    delete currentConfig[key];
+                                    render();
+                                }
 
                                 function save() {
                                     const updates = {};
-                                    document.querySelectorAll('#fields input').forEach(input => {
-                                        updates[input.id] = input.value;
+                                    document.querySelectorAll('.form-group').forEach(group => {
+                                        const key = group.querySelector('.key-input').value;
+                                        const val = group.querySelector('.val-input').value;
+                                        if (key) updates[key] = val;
                                     });
                                     window.ipc.postMessage('save_settings:' + JSON.stringify(updates));
                                 }
+
+                                render();
                             </script>
                         </body>
                         </html>
                     "#;
-                    let escaped_html = settings_html.replace("`", "\\`").replace("${", "\\${");
+                    let current_env = load_external_env();
+                    let env_json = serde_json::to_string(&current_env).unwrap_or_else(|_| "{}".to_string());
+                    let final_html = settings_html.replace("CONFIG_JSON", &env_json);
+                    
+                    let escaped_html = final_html.replace("`", "\\`").replace("${", "\\${");
                     let script = format!("document.open(); document.write(`{}`); document.close();", escaped_html);
                     let _ = webview.evaluate_script(&script);
                 } else {

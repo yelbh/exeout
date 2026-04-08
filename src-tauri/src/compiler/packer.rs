@@ -268,14 +268,31 @@ impl Compiler {
             }
         }
 
-        // Generate template .env if we have external variables
-        if !self.env_vars.is_empty() {
+        // Generate template .env for multi-station deployment
+        if !self.env_vars.is_empty() || self.db_type == "mariadb" {
             let env_path = exe_name.parent().unwrap().join(".env.template");
             let mut content = String::new();
-            content.push_str("# Modèle de configuration pour cette station\n");
-            for (key, val) in &self.env_vars {
+            content.push_str("# ==================================================\n");
+            content.push_str("# MODELE DE CONFIGURATION (A RENOMMER EN .env)\n");
+            content.push_str("# ==================================================\n\n");
+            
+            let mut vars = self.env_vars.clone();
+            
+            // Add DB vars if MariaDB is used and not already in env_vars
+            if self.db_type == "mariadb" {
+                vars.entry("DB_CONNECTION".to_string()).or_insert("mysql".to_string());
+                vars.entry("DB_HOST".to_string()).or_insert("127.0.0.1".to_string());
+                vars.entry("DB_PORT".to_string()).or_insert(self.db_port.to_string());
+                vars.entry("DB_DATABASE".to_string()).or_insert(self.db_name.clone());
+                vars.entry("DB_USERNAME".to_string()).or_insert(self.db_user.clone());
+                vars.entry("DB_PASSWORD".to_string()).or_insert(self.db_pass.clone());
+            }
+
+            for (key, val) in &vars {
                 content.push_str(&format!("{}={}\n", key, val));
             }
+            
+            content.push_str("\n# Note: Vous pouvez aussi modifier ces valeurs via Ctrl+Shift+S dans l'application.\n");
             fs::write(env_path, content)?;
         }
 

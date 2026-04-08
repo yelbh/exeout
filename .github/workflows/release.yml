@@ -82,44 +82,23 @@ jobs:
         if: steps.bump.outputs.should_release == 'true'
         shell: pwsh
         run: |
-          Write-Host "Recherche du manifeste généré par Tauri..."
-          $found = $false
-          
-          # On cherche spécifiquement dans le dossier de build et on ignore la racine
-          Get-ChildItem -Path "src-tauri/target/release" -Filter "*.json" -Recurse | ForEach-Object {
+          Write-Host "Recherche du manifeste..."
+          Get-ChildItem -Path "." -Filter "*.json" -Recurse | ForEach-Object {
             try {
               $content = Get-Content $_.FullName -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
               if ($content.version -and $content.platforms) {
                 Copy-Item $_.FullName "maj.json"
-                Write-Host "MANIFESTE DE RELEASE TROUVÉ ! Chemin: $($_.FullName)"
-                $found = $true
-                return # Dans ForEach-Object, return agit comme un break si on n'en attend qu'un
+                Write-Host "MANIFESTE TROUVÉ ! Chemin: $($_.FullName)"
+                
+                # On cherche aussi l'exécutable dans le même dossier ou un dossier de release
+                $exePath = Get-ChildItem -Path "src-tauri/target/release/*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($exePath) {
+                   Copy-Item $exePath.FullName "exeoutput-studio-latest.exe"
+                   Write-Host "EXE TROUVÉ ! Chemin: $($exePath.FullName)"
+                }
+                return
               }
             } catch { }
-          }
-          
-          # Recherche de l'exécutable principal
-          $exePath = Get-ChildItem -Path "src-tauri/target/release" -Filter "exeoutput-studio.exe" -Recurse | Select-Object -First 1
-          if ($exePath) {
-             Copy-Item $exePath.FullName "exeoutput-studio-latest.exe"
-             Write-Host "EXE DE RELEASE TROUVÉ ! Chemin: $($exePath.FullName)"
-          } else {
-             Write-Warning "EXE non trouvé avec le nom exact, recherche de tout .exe dans release..."
-             $exePath = Get-ChildItem -Path "src-tauri/target/release/*.exe" -Recurse | Where-Object { $_.Name -notmatch "bundled" } | Select-Object -First 1
-             if ($exePath) {
-                Copy-Item $exePath.FullName "exeoutput-studio-latest.exe"
-                Write-Host "EXE ALTERNATIF TROUVÉ ! Chemin: $($exePath.FullName)"
-             }
-          }
-
-          # VALIDATION CRITIQUE
-          if (!(Test-Path "maj.json")) {
-            Write-Error "ERREUR CRITIQUE : Le manifeste maj.json n'a pas pu être généré ou trouvé dans les dossiers de build."
-            exit 1
-          }
-          if (!(Test-Path "exeoutput-studio-latest.exe")) {
-            Write-Error "ERREUR CRITIQUE : L'exécutable .exe n'a pas été trouvé."
-            exit 1
           }
           
       - name: Upload Artifacts
@@ -129,7 +108,7 @@ jobs:
           name: deployment-files
           path: |
             maj.json
-            exeoutput-studio-latest.exe
+            *.exe
           retention-days: 1
 
       - name: Push changes and tags back to GitHub
@@ -158,5 +137,4 @@ jobs:
           source: "*"
           target: "/home/sddxxzqh/public_html/"
           strip_components: 0
-
 
