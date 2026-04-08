@@ -6,16 +6,20 @@ on:
       - main
 
 jobs:
-  release:
+  build:
     runs-on: windows-latest
     permissions:
-      contents: write  # Autorise la création de releases et le push de tags
+      contents: write
       
+    outputs:
+      should_release: ${{ steps.bump.outputs.should_release }}
+      new_version: ${{ steps.bump.outputs.new_version }}
+
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Nécessaire pour standard-version pour voir l'historique
-          
+          fetch-depth: 0
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -36,7 +40,6 @@ jobs:
         id: bump
         shell: pwsh
         run: |
-          # Tentative d'incrémentation basée sur les commits conventionnels
           $result = npx standard-version --skip.tag
           if ($LASTEXITCODE -eq 0) {
             $package = Get-Content package.json | ConvertFrom-Json
@@ -75,44 +78,63 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
 
-      - name: Prepare and Deploy Update Manifest
+      - name: Prepare Update Manifest
         if: steps.bump.outputs.should_release == 'true'
         shell: pwsh
         run: |
-          Write-Host "Recherche exhaustive du manifeste..."
-          # Recherche dans TOUT le dépôt pour être sûr de ne rien rater
+          Write-Host "Recherche du manifeste..."
           Get-ChildItem -Path "." -Filter "*.json" -Recurse | ForEach-Object {
             try {
               $content = Get-Content $_.FullName -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
               if ($content.version -and $content.platforms) {
                 Copy-Item $_.FullName "maj.json"
                 Write-Host "MANIFESTE TROUVÉ ! Chemin: $($_.FullName)"
+                
+                # On cherche aussi l'exécutable dans le même dossier ou un dossier de release
+                $exePath = Get-ChildItem -Path "src-tauri/target/release/*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($exePath) {
+                   Copy-Item $exePath.FullName "exeoutput-studio-latest.exe"
+                   Write-Host "EXE TROUVÉ ! Chemin: $($exePath.FullName)"
+                }
                 return
               }
             } catch { }
           }
           
-          if (!(Test-Path "maj.json")) {
-            Write-Error "CRITICAL: updater json not found anywhere in the workspace!"
-            Write-Host "Listing all JSON files for diagnostic:"
-            Get-ChildItem -Path "." -Filter "*.json" -Recurse | Select-Object FullName
-            exit 1
-          }
-
-      - name: Upload to Server via SFTP
+      - name: Upload Artifacts
         if: steps.bump.outputs.should_release == 'true'
-        uses: appleboy/scp-action@v0.1.7
+        uses: actions/upload-artifact@v4
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: 5022
-          source: "maj.json"
-          target: "/home/sddxxzqh/public_html/"
-          strip_components: 0
+          name: deployment-files
+          path: |
+            maj.json
+            *.exe
+          retention-days: 1
 
       - name: Push changes and tags back to GitHub
         if: steps.bump.outputs.should_release == 'true'
         shell: pwsh
         run: |
           git push --follow-tags
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-files
+
+      - name: Upload to Server via SFTP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 5022
+          source: "*"
+          target: "/home/sddxxzqh/public_html/"
+          strip_components: 0
+
