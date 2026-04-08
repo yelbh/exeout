@@ -136,9 +136,11 @@ async fn compile_project(window: tauri::Window, _name: String, version: String, 
             compiler.icon_path = Some(std::path::PathBuf::from(icon));
         }
         
-        let _ = window.emit("compilation-progress", 0);
+        let _ = window.emit("compilation-log", format!("Préparation de la compilation (v{})...", compiler.version));
+        let _ = window.emit("compilation-progress", 10); // Start at 10% after prep
         
         // 1. Collect files (25%)
+        let _ = window.emit("compilation-log", "Analyse des fichiers sources...");
         let files = compiler.collect_files()
             .map_err(|e| format!("Erreur lors de la collecte : {}", e))?;
         let file_count = files.len();

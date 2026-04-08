@@ -184,6 +184,7 @@ const compileProject = async () => {
 
   lastOutputPath.value = null;
   lastJsonPath.value = null;
+  compilationProgress.value = 0; // Force immediate visibility
   compilerStore.addLog('info', 'Début de la compilation...');
   try {
     const result = await invoke('compile_project', {
@@ -210,6 +211,7 @@ const compileProject = async () => {
     compilerStore.addLog('info', result as string);
     alert(result);
   } catch (e) {
+    compilationProgress.value = null; // Hide bar on error
     compilerStore.addLog('error', `Erreur de compilation : ${e}`);
     alert(`Erreur : ${e}`);
   }
