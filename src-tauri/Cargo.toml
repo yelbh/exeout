@@ -1,6 +1,6 @@
 [package]
 name = "exeoutput-studio"
-version = "1.0.0"
+version = "1.0.2"
 description = "PHP to EXE Compiler Studio"
 authors = ["ExeOutput"]
 edition = "2021"
