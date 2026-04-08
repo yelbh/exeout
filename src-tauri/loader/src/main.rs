@@ -38,6 +38,12 @@ struct Config {
 #[derive(Deserialize)]
 struct UpdateManifest {
     version: String,
+    notes: Option<String>,
+    platforms: std::collections::HashMap<String, PlatformInfo>,
+}
+
+#[derive(Deserialize)]
+struct PlatformInfo {
     url: String,
 }
 
@@ -169,7 +175,11 @@ fn main() {
     if let Err(e) = run() {
         let msg = format!("Erreur fatale : {}", e);
         log(&msg);
-        let _ = msgbox::create("ExeOutput Runtime Error", &msg, msgbox::IconType::Error);
+        let _ = rfd::MessageDialog::new()
+            .set_title("ExeOutput Runtime Error")
+            .set_description(&msg)
+            .set_level(rfd::MessageLevel::Error)
+            .show();
         std::process::exit(1);
     }
 }
@@ -364,23 +374,37 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(ref update_url) = update_url {
                 if let Some(ref current_version) = version {
                     log(&format!("Vérification des mises à jour sur l'URL: {}", update_url));
-                    if let Ok(resp) = ureq::get(update_url).timeout(std::time::Duration::from_secs(3)).call() {
+                    if let Ok(resp) = ureq::get(update_url).timeout(std::time::Duration::from_secs(5)).call() {
                         if let Ok(manifest) = resp.into_json::<UpdateManifest>() {
                             if manifest.version != *current_version {
                                 log(&format!("Nouvelle version trouvée: {} (actuelle: {})", manifest.version, current_version));
-                                let _ = proxy.send_event(UserEvent::Ready("Mise à jour en cours de téléchargement...".to_string()));
-                                let temp_exe = std::env::temp_dir().join(format!("update_{}_{}.exe", file_name, manifest.version));
-                                if let Ok(mut file) = std::fs::File::create(&temp_exe) {
-                                    if let Ok(dl_resp) = ureq::get(&manifest.url).call() {
-                                        let mut reader = dl_resp.into_reader();
-                                        if std::io::copy(&mut reader, &mut file).is_ok() {
-                                            log("Mise à jour téléchargée. Remplacement en cours...");
-                                            if self_replace::self_replace(&temp_exe).is_ok() {
-                                                log("Remplacement réussi. Redémarrage de l'application.");
-                                                let _ = std::process::Command::new(&exe_path).spawn();
-                                                std::process::exit(0);
-                                            } else {
-                                                log("Échec du remplacement de l'exécutable.");
+                                
+                                let notes = manifest.notes.as_deref().unwrap_or("Aucune note de version fournie.");
+                                let confirm = rfd::MessageDialog::new()
+                                    .set_title("Mise à jour disponible")
+                                    .set_description(&format!("Une nouvelle version ({}) est disponible.\n\nNotes :\n{}\n\nVoulez-vous l'installer maintenant ?", manifest.version, notes))
+                                    .set_buttons(rfd::MessageButtons::YesNo)
+                                    .show();
+
+                                if confirm == rfd::MessageDialogResult::Yes {
+                                    if let Some(platform) = manifest.platforms.get("windows-x86_64") {
+                                        let _ = proxy.send_event(UserEvent::Ready("Téléchargement de la mise à jour...".to_string()));
+                                        log(&format!("Téléchargement depuis : {}", platform.url));
+                                        
+                                        let temp_exe = std::env::temp_dir().join(format!("update_{}_{}.exe", file_name, manifest.version));
+                                        if let Ok(mut file) = std::fs::File::create(&temp_exe) {
+                                            if let Ok(dl_resp) = ureq::get(&platform.url).call() {
+                                                let mut reader = dl_resp.into_reader();
+                                                if std::io::copy(&mut reader, &mut file).is_ok() {
+                                                    log("Mise à jour téléchargée. Remplacement en cours...");
+                                                    if self_replace::self_replace(&temp_exe).is_ok() {
+                                                        log("Remplacement réussi. Redémarrage de l'application.");
+                                                        let _ = std::process::Command::new(&exe_path).spawn();
+                                                        std::process::exit(0);
+                                                    } else {
+                                                        log("Échec du remplacement de l'exécutable.");
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -903,8 +927,12 @@ echo "--- FIN DU DIAGNOSTIC ---\n\n";
                     webview.load_url(&url);
                 }
             }
-            Event::UserEvent(UserEvent::FatalError(err)) => {
-                let _ = msgbox::create("ExeOutput Runtime Error", &err, msgbox::IconType::Error);
+Event::UserEvent(UserEvent::FatalError(err)) => {
+                let _ = rfd::MessageDialog::new()
+                    .set_title("ExeOutput Runtime Error")
+                    .set_description(&err)
+                    .set_level(rfd::MessageLevel::Error)
+                    .show();
                 *control_flow = ControlFlow::Exit;
             }
             Event::WindowEvent {
