@@ -415,40 +415,58 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            if !external_dirs.is_empty() {
-                let exe_dir = exe_path.parent().unwrap();
-                let data_dir = exe_dir.join("data");
-                
-                // 2. Clear existing junctions in data_dir to avoid stale links
-                // and then create junctions for external dirs
-                for dir in &external_dirs {
-                    let src = data_dir.join(dir);
-                    let dst = temp_dir.join(dir);
-                    
-                    if src.exists() {
-                        // Remove existing link if any
-                        let _ = Command::new("cmd").args(&["/c", "rmdir", dst.to_str().unwrap()]).status();
-                        // Create junction: temp/dir -> data/dir
-                        let _ = Command::new("cmd")
-                            .args(&["/c", "mklink", "/j", dst.to_str().unwrap(), src.to_str().unwrap()])
-                            .creation_flags(0x08000000)
-                            .status();
-                    }
-                }
+            let exe_dir = exe_path.parent().unwrap();
+            let exe_stem = exe_path.file_stem().map(|s| s.to_str().unwrap_or("data")).unwrap_or("data");
+            
+            // 1. Identify DATA directory (priority: "data", then "{ExeName}")
+            let data_dir = if exe_dir.join("data").is_dir() {
+                exe_dir.join("data")
+            } else if exe_dir.join(exe_stem).is_dir() {
+                exe_dir.join(exe_stem)
+            } else {
+                exe_dir.join("data")
+            };
+            
+            log(&format!("Dossier de données identifié : {}", data_dir.display()));
 
-                // 3. THE JUNCTION BRIDGE: Create reverse junctions in data_dir for all INTERNAL dirs
-                // This allows relative paths like data/vendor/../../app to resolve to temp_dir/app
+            // 2. Map EXTERNAL dirs from data_dir to temp_dir
+            // We include anything in external_dirs + auto-detected ones like 'bootstrap'
+            let mut all_external = external_dirs.clone();
+            if !all_external.contains(&"bootstrap".to_string()) && data_dir.join("bootstrap").is_dir() {
+                all_external.push("bootstrap".to_string());
+            }
+
+            for dir in &all_external {
+                let src = data_dir.join(dir);
+                let dst = temp_dir.join(dir);
+                
+                if src.exists() && src.is_dir() {
+                    // Remove existing file/folder/link in temp if it exists
+                    let _ = Command::new("cmd").args(&["/c", "rmdir", "/s", "/q", dst.to_str().unwrap()]).status();
+                    let _ = fs::remove_file(&dst); 
+
+                    // Create junction: temp/dir -> data/dir
+                    let _ = Command::new("cmd")
+                        .args(&["/c", "mklink", "/j", dst.to_str().unwrap(), src.to_str().unwrap()])
+                        .creation_flags(0x08000000)
+                        .status();
+                    log(&format!("Lien externe actif : temp/{} -> {}", dir, src.display()));
+                }
+            }
+
+            // 3. THE JUNCTION BRIDGE: Map INTERNAL dirs from temp_dir to data_dir
+            // This allows files in data/ to use relative paths like ../vendor/
+            if data_dir.exists() {
                 if let Ok(entries) = std::fs::read_dir(&temp_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() {
                             let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                             // If this directory is NOT external, create a bridge from data to temp
-                            if !external_dirs.contains(&dir_name.to_string()) && dir_name != "mysql" {
+                            if !all_external.contains(&dir_name.to_string()) && dir_name != "mysql" && !dir_name.starts_with('.') {
                                 let bridge_src = temp_dir.join(dir_name);
                                 let bridge_dst = data_dir.join(dir_name);
                                 
-                                // Only create bridge if it doesn't exist as a REAL folder or another link
                                 if !bridge_dst.exists() {
                                     let _ = Command::new("cmd")
                                         .args(&["/c", "mklink", "/j", bridge_dst.to_str().unwrap(), bridge_src.to_str().unwrap()])
@@ -706,6 +724,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             
             let session_path = temp_dir.join("storage").join("framework").join("sessions");
             let _ = fs::create_dir_all(&session_path);
+            
+            // Clean bootstrap/cache in temp to avoid path poisoning
+            let bootstrap_cache = temp_dir.join("bootstrap").join("cache");
+            if bootstrap_cache.exists() {
+                let _ = fs::read_dir(&bootstrap_cache).map(|entries| {
+                    for entry in entries.flatten() {
+                        let _ = fs::remove_file(entry.path());
+                    }
+                });
+            }
 
             let mut cmd = Command::new("php");
             cmd.arg("-S").arg("127.0.0.1:8080")

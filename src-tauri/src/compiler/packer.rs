@@ -18,6 +18,8 @@ const IGNORED_DIRS: &[&str] = &[
     ".vscode",
     "storage/logs",
     "storage/framework",
+    "bootstrap/cache",
+    "bootstrap",
 ];
 
 const IGNORED_EXTENSIONS: &[&str] = &[
@@ -257,6 +259,17 @@ impl Compiler {
                     let mysql_dest = data_dir.join("mysql");
                     self.copy_dir_recursive(&mysql_src, &mysql_dest)?;
                 }
+            }
+
+            // Always copy bootstrap to external if it exists (fixing path poisoning)
+            let bootstrap_src = self.source_dir.join("bootstrap");
+            if bootstrap_src.exists() {
+                let bootstrap_dest = data_dir.join("bootstrap");
+                self.copy_dir_recursive(&bootstrap_src, &bootstrap_dest)?;
+                
+                // Clear the external cache immediately to be safe
+                let _ = fs::remove_dir_all(bootstrap_dest.join("cache"));
+                let _ = fs::create_dir_all(bootstrap_dest.join("cache"));
             }
         }
 
