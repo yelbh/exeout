@@ -53,8 +53,12 @@
         <div v-if="projectDirs.length === 0" class="loading-dirs">Chargement des dossiers du projet...</div>
         
         <div v-else class="dirs-list">
-          <div v-if="isLaravel && store.currentProject?.externalDirs.includes('vendor')" class="info-box error" style="margin: 1rem;">
-            <p><strong>Alerte de compatibilité :</strong> Vous avez configuré <code>vendor</code> comme dossier externe dans un projet Laravel/Composer. Cela va casser l'autoloading de PHP (Failed to open stream). Veuillez inclure <code>vendor</code> dans l'EXE pour garantir le fonctionnement.</p>
+          <div v-if="isLaravel && store.currentProject?.externalDirs.includes('vendor')" class="info-box info" style="margin: 1rem;">
+            <p><strong>Optimisation active :</strong> Le dossier <code>vendor</code> est externe. Le Studio utilise son système de <em>Pont par Jonction</em> pour garantir la compatibilité Laravel tout en gardant l'EXE ultra-léger.</p>
+          </div>
+
+          <div v-if="isLaravel && !store.currentProject?.externalDirs.includes('vendor')" class="info-box tip" style="margin: 1rem;">
+            <p><strong>Conseil :</strong> Vous pouvez mettre <code>vendor</code> en dossier externe pour réduire la taille de votre EXE de plus de 100 Mo. Le Studio gérera les chemins automatiquement.</p>
           </div>
 
           <div v-for="dir in projectDirs" :key="dir" class="dir-item">
