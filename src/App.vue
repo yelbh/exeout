@@ -29,11 +29,8 @@
         </div>
       </header>
 
-      <!-- Progress Bar -->
-      <div v-if="compilationProgress !== null" class="progress-container">
-        <div class="progress-bar" :style="{ width: compilationProgress + '%' }"></div>
-        <span class="progress-text">{{ compilationProgress }}%</span>
-      </div>
+      <!-- Premium Progress Bar -->
+      <ProgressBar />
 
       <section class="main-view">
         <router-view />
@@ -55,6 +52,7 @@ import { ref, onMounted } from 'vue';
 import { useProjectStore } from './stores/project';
 import { useCompilerStore } from './stores/compiler';
 import ConsoleLog from './components/ConsoleLog.vue';
+import ProgressBar from './components/ProgressBar.vue';
 import { invoke } from '@tauri-apps/api/tauri';
 import { dialog, shell } from '@tauri-apps/api';
 import { listen } from '@tauri-apps/api/event';
@@ -67,7 +65,6 @@ const route = useRoute();
 const projectStore = useProjectStore();
 const compilerStore = useCompilerStore();
 
-const compilationProgress = ref<number | null>(null);
 const lastOutputPath = ref<string | null>(null);
 const lastJsonPath = ref<string | null>(null);
 
@@ -92,12 +89,7 @@ onMounted(async () => {
   }
 
   await listen<number>('compilation-progress', (event) => {
-    compilationProgress.value = event.payload;
-    if (event.payload === 100) {
-      setTimeout(() => {
-        compilationProgress.value = null;
-      }, 3000);
-    }
+    compilerStore.setProgress(event.payload);
   });
   await listen<string>('compilation-log', (event) => {
     compilerStore.addLog('info', event.payload);
@@ -184,7 +176,7 @@ const compileProject = async () => {
 
   lastOutputPath.value = null;
   lastJsonPath.value = null;
-  compilationProgress.value = 0; // Force immediate visibility
+  compilerStore.setProgress(0); // Force immediate visibility
   compilerStore.addLog('info', 'Début de la compilation...');
   try {
     const result = await invoke('compile_project', {
@@ -211,7 +203,7 @@ const compileProject = async () => {
     compilerStore.addLog('info', result as string);
     alert(result);
   } catch (e) {
-    compilationProgress.value = null; // Hide bar on error
+    compilerStore.setProgress(null); // Hide bar on error
     compilerStore.addLog('error', `Erreur de compilation : ${e}`);
     alert(`Erreur : ${e}`);
   }

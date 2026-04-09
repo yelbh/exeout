@@ -16,10 +16,8 @@ const IGNORED_DIRS: &[&str] = &[
     "__pycache__",
     ".idea",
     ".vscode",
-    "storage/logs",
     "storage/framework",
     "bootstrap/cache",
-    "bootstrap",
 ];
 
 const IGNORED_EXTENSIONS: &[&str] = &[
@@ -261,16 +259,9 @@ impl Compiler {
                 }
             }
 
-            // Always copy bootstrap to external if it exists (fixing path poisoning)
-            let bootstrap_src = self.source_dir.join("bootstrap");
-            if bootstrap_src.exists() {
-                let bootstrap_dest = data_dir.join("bootstrap");
-                self.copy_dir_recursive(&bootstrap_src, &bootstrap_dest)?;
-                
-                // Clear the external cache immediately to be safe
-                let _ = fs::remove_dir_all(bootstrap_dest.join("cache"));
-                let _ = fs::create_dir_all(bootstrap_dest.join("cache"));
-            }
+            // Handle bootstrap cache externalization (part of fixing path poisoning)
+            let bootstrap_cache_dest = data_dir.join("bootstrap").join("cache");
+            let _ = fs::create_dir_all(&bootstrap_cache_dest);
         }
 
         if let Some(sql_path) = &self.init_sql_path {
@@ -336,22 +327,72 @@ impl Compiler {
         {
             use std::os::windows::ffi::OsStrExt;
             use winapi::um::winbase::{BeginUpdateResourceW, UpdateResourceW, EndUpdateResourceW};
-            
+            use winapi::um::winuser::{RT_ICON, RT_GROUP_ICON};
+            use winapi::shared::ntdef::LANG_NEUTRAL;
+
             let exe_path_wide: Vec<u16> = self.output_path.as_os_str().encode_wide().chain(Some(0)).collect();
             let icon_data = fs::read(icon_path)?;
             
-            // Simple resource update for icon (ID 1)
+            if icon_data.len() < 6 {
+                return Err(anyhow::anyhow!("Fichier icône invalide (trop court)"));
+            }
+
+            // Simple ICO parser
+            let count = u16::from_le_bytes([icon_data[4], icon_data[5]]) as usize;
+            let mut icon_resources = Vec::new();
+            
+            // RT_GROUP_ICON header
+            let mut group_icon_data = Vec::new();
+            group_icon_data.extend_from_slice(&icon_data[0..6]);
+
+            for i in 0..count {
+                let start = 6 + i * 16;
+                let entry = &icon_data[start..start + 16];
+                
+                let size = u32::from_le_bytes([entry[8], entry[9], entry[10], entry[11]]) as usize;
+                let offset = u32::from_le_bytes([entry[12], entry[13], entry[14], entry[15]]) as usize;
+                
+                let image_data = &icon_data[offset..offset + size];
+                icon_resources.push(image_data.to_vec());
+
+                // GRPICONDIRENTRY
+                group_icon_data.extend_from_slice(&entry[0..12]); // width, height, colors, reserved, planes, bitcount, size
+                group_icon_data.extend_from_slice(&(i as u16 + 1).to_le_bytes()); // ID
+            }
+
             unsafe {
                 let handle = BeginUpdateResourceW(exe_path_wide.as_ptr(), 0);
-                if !handle.is_null() {
-                    // Update the icon group and the icon itself
-                    // Note: This is an approximation. A full ICO parser would be better,
-                    // but for common .ico files, this often works to replace the main icon.
-                    let rt_icon = 3 as usize as *const u16; // RT_ICON
-                    UpdateResourceW(handle, rt_icon, 1 as *const u16, 0, icon_data.as_ptr() as *mut _, icon_data.len() as u32);
-                    EndUpdateResourceW(handle, 0);
+                if handle.is_null() {
+                    return Err(anyhow::anyhow!("Impossible d'ouvrir l'EXE pour mise à jour des ressources"));
+                }
+
+                // Update RT_GROUP_ICON (ID 1)
+                UpdateResourceW(
+                    handle,
+                    RT_GROUP_ICON,
+                    1 as *const u16,
+                    LANG_NEUTRAL,
+                    group_icon_data.as_ptr() as *mut _,
+                    group_icon_data.len() as u32,
+                );
+
+                // Update RT_ICON resources
+                for (i, data) in icon_resources.iter().enumerate() {
+                    UpdateResourceW(
+                        handle,
+                        RT_ICON,
+                        (i + 1) as *const u16,
+                        LANG_NEUTRAL,
+                        data.as_ptr() as *mut _,
+                        data.len() as u32,
+                    );
+                }
+
+                if EndUpdateResourceW(handle, 0) == 0 {
+                    return Err(anyhow::anyhow!("Erreur lors de la sauvegarde de l'icône dans l'EXE"));
                 }
             }
+            println!("Icône appliquée avec succès à {}", self.output_path.display());
         }
         Ok(())
     }

@@ -4,7 +4,7 @@ import { LogEntry } from '../types/project';
 export const useCompilerStore = defineStore('compiler', {
   state: () => ({
     isCompiling: false,
-    progress: 0,
+    progress: null as number | null,
     logs: [] as LogEntry[],
     status: 'Idle',
   }),
@@ -15,10 +15,25 @@ export const useCompilerStore = defineStore('compiler', {
     clearLogs() {
       this.logs = [];
     },
-    async startCompile() {
-      this.isCompiling = true;
-      this.progress = 0;
-      this.status = 'Compiling...';
+    setProgress(val: number | null) {
+      this.progress = val;
+      if (val === 100) {
+        this.isCompiling = false;
+        this.status = 'Terminé';
+        setTimeout(() => {
+          this.progress = null;
+        }, 3000);
+      } else if (val !== null) {
+        this.isCompiling = true;
+        this.status = 'Compilation...';
+      } else {
+        this.isCompiling = false;
+      }
+    },
+    resetProgress() {
+      this.progress = null;
+      this.isCompiling = false;
+      this.status = 'Idle';
     }
   }
 });

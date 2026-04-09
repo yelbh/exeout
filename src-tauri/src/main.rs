@@ -136,34 +136,35 @@ async fn compile_project(window: tauri::Window, _name: String, version: String, 
             compiler.icon_path = Some(std::path::PathBuf::from(icon));
         }
         
-        let _ = window.emit("compilation-log", format!("Préparation de la compilation (v{})...", compiler.version));
-        let _ = window.emit("compilation-progress", 10); // Start at 10% after prep
+        use tauri::Manager;
+        let _ = window.app_handle().emit_all("compilation-log", format!("Préparation de la compilation (v{})...", compiler.version));
+        let _ = window.app_handle().emit_all("compilation-progress", 10i32);
         
         // 1. Collect files (25%)
-        let _ = window.emit("compilation-log", "Analyse des fichiers sources...");
+        let _ = window.app_handle().emit_all("compilation-log", "Analyse des fichiers sources...");
         let files = compiler.collect_files()
             .map_err(|e| format!("Erreur lors de la collecte : {}", e))?;
         let file_count = files.len();
-        let _ = window.emit("compilation-log", format!("{} fichier(s) trouvé(s) à packager", file_count));
-        let _ = window.emit("compilation-progress", 25);
+        let _ = window.app_handle().emit_all("compilation-log", format!("{} fichier(s) trouvé(s) à packager", file_count));
+        let _ = window.app_handle().emit_all("compilation-progress", 25i32);
         
         // 2. Package resources (50%)
         let compressed = compiler.compress_resources(files, |pct| {
             let overall = 25 + (pct * 50 / 100);
-            let _ = window.emit("compilation-progress", overall);
+            let _ = window.app_handle().emit_all("compilation-progress", overall as i32);
         }).map_err(|e| format!("Erreur lors de la compression : {}", e))?;
         
         // 3. Generate the final EXE (90%)
         compiler.generate_exe(compressed)
             .map_err(|e| format!("Erreur lors de la génération de l'EXE : {}", e))?;
-        let _ = window.emit("compilation-progress", 90);
+        let _ = window.app_handle().emit_all("compilation-progress", 90i32);
 
         // 4. Generate Update Manifest (100%)
-        let _ = window.emit("compilation-log", "Génération du manifeste de mise à jour...");
+        let _ = window.app_handle().emit_all("compilation-log", "Génération du manifeste de mise à jour...");
         compiler.generate_update_manifest()
             .map_err(|e| format!("Erreur lors de la génération du manifeste : {}", e))?;
             
-        let _ = window.emit("compilation-progress", 100);
+        let _ = window.app_handle().emit_all("compilation-progress", 100i32);
         
         Ok(format!("Compilation terminée ! Votre exécutable et son manifeste JSON sont disponibles ici : {}", out_path.parent().unwrap().display()))
     }).await.map_err(|e| format!("Erreur du thread: {}", e))?
