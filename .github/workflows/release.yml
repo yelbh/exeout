@@ -78,37 +78,44 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
 
-      - name: Prepare Update Manifest
+      - name: Prepare Update Manifest and MSI
         if: steps.bump.outputs.should_release == 'true'
         shell: pwsh
         run: |
-          Write-Host "Recherche du manifeste..."
+          Write-Host "=== Recherche du manifeste updater ==="
+          $manifestFound = $false
           Get-ChildItem -Path "." -Filter "*.json" -Recurse | ForEach-Object {
+            if ($manifestFound) { return }
             try {
               $content = Get-Content $_.FullName -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
               if ($content.version -and $content.platforms) {
-                Copy-Item $_.FullName "maj.json"
-                Write-Host "MANIFESTE TROUVÉ ! Chemin: $($_.FullName)"
-                
-                # On cherche aussi l'exécutable dans le même dossier ou un dossier de release
-                $exePath = Get-ChildItem -Path "src-tauri/target/release/*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($exePath) {
-                   Copy-Item $exePath.FullName "exeoutput-studio-latest.exe"
-                   Write-Host "EXE TROUVÉ ! Chemin: $($exePath.FullName)"
-                }
-                return
+                Copy-Item $_.FullName "exeoutput-studio.json"
+                Write-Host "MANIFESTE TROUVE: $($_.FullName)"
+                $manifestFound = $true
               }
             } catch { }
           }
-          
+
+          Write-Host "=== Recherche du MSI.zip ==="
+          $zipFound = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi.zip" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($zipFound) {
+            Copy-Item $zipFound.FullName "exeoutput-studio.msi.zip"
+            Write-Host "MSI.ZIP TROUVE: $($zipFound.FullName)"
+          } else {
+            Write-Host "AVERTISSEMENT: Aucun .msi.zip trouve."
+          }
+
+          Write-Host "=== Fichiers prepares ==="
+          Get-ChildItem -Filter "exeoutput-*" | ForEach-Object { Write-Host " - $($_.Name)" }
+
       - name: Upload Artifacts
         if: steps.bump.outputs.should_release == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: deployment-files
           path: |
-            maj.json
-            *.exe
+            exeoutput-studio.json
+            exeoutput-studio.msi.zip
           retention-days: 1
 
       - name: Push changes and tags back to GitHub
@@ -134,7 +141,6 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: 5022
-          source: "*"
+          source: "exeoutput-studio.json,exeoutput-studio.msi.zip"
           target: "/home/sddxxzqh/public_html/telechargements/"
           strip_components: 0
-
