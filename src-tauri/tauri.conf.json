@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "exeoutput-studio",
-    "version": "../package.json"
+    "version": "1.6.4"
   },
   "tauri": {
     "allowlist": {
@@ -45,7 +45,12 @@
       "csp": null
     },
     "updater": {
-      "active": false
+      "active": true,
+      "endpoints": [
+        "https://ben-sms.com/telechargements/exeoutput-studio.json"
+      ],
+      "dialog": true,
+      "pubkey": "RWSCckZuC29wPNRxOOGnf9SPcKYbaFBQywM2LO29QYbmVzhkdCG84d/r"
     },
     "windows": [
       {

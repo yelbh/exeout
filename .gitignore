@@ -20,3 +20,11 @@ pubkey_output.txt
 # Fichiers temporaires de build
 src-tauri/test_errors*.txt
 src-tauri/build_err.txt
+ 
+*.key
+*.hex
+build_*.log
+*.txt
+*.cjs
+*.zip
+*.sig

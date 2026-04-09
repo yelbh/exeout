@@ -1,10 +1,10 @@
 {
-  "version": "1.0.0",
-  "notes": "Version initiale de ExeOutput Studio.",
-  "pub_date": "2026-03-24T00:00:00Z",
+  "version": "1.6.4",
+  "notes": "Version finale avec Auto-Update réparé.",
+  "pub_date": "2026-04-09T00:00:00Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "...",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQ2NrWnVDMjl3UENGOUlnN2YzS0x2dFd1RTljeHFES3FaRDRGY3pkdy9jcDBCNkVCVDdzMVRNWGlqVHAxWmpEbnBkekEvQi82SU82ckFwUkNqR3c5bXZHZkZjcG5jZkFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1NzQ3MDYwCWZpbGU6cGtnLnppcApLd2VaVUhFUmx0TTI4VUU5MzNLcTlqcjB5VlVHYkdzRDl6MFhLa2E1ek1oOFYwdmR0QzVrZ1hjUExqNEpSWmFDeXViRmtaaUJxUTdqZUlpYkRzMHVEQT09Cg==",
       "url": "https://ben-sms.com/telechargements/exeoutput-studio.msi.zip"
     }
   }

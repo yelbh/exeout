@@ -135,6 +135,6 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: 5022
           source: "*"
-          target: "/home/sddxxzqh/public_html/"
+          target: "/home/sddxxzqh/public_html/telechargements/"
           strip_components: 0
 
