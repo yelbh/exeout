@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.3](https://github.com/yelbh/exeout/compare/v1.6.2...v1.6.3) (2026-04-09)
+
+
+### Bug Fixes
+
+* headless loader to resolve build conflicts and enable dynamic path mapping (bridge) ([b46846e](https://github.com/yelbh/exeout/commit/b46846eb955a7cdcbad593fef365649756235277))
+
 ### [1.6.2](https://github.com/yelbh/exeout/compare/v1.6.1...v1.6.2) (2026-04-08)
 
 
