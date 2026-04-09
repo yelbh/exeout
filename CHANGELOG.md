@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.7.0](https://github.com/yelbh/exeout/compare/v1.6.3...v1.7.0) (2026-04-09)
+
+
+### Features
+
+* jauge premium, fenêtre autonome, correction 404 (Document Root) et application d'icônes ([6d17a16](https://github.com/yelbh/exeout/commit/6d17a16f33dc04b6dbe6579e04d7c8ad100f3a35))
+
 ### [1.6.3](https://github.com/yelbh/exeout/compare/v1.6.2...v1.6.3) (2026-04-09)
 
 
