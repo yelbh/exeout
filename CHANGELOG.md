@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.5](https://github.com/yelbh/exeout/compare/v1.7.0...v1.6.5) (2026-04-09)
+
+
+### Bug Fixes
+
+* **updater:** final GitHub action path and signature config ([428a2ec](https://github.com/yelbh/exeout/commit/428a2eca9af99b7370ee674d835df64098033320))
+
 ## [1.7.0](https://github.com/yelbh/exeout/compare/v1.6.3...v1.7.0) (2026-04-09)
 
 
