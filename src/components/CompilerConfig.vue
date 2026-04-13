@@ -25,16 +25,16 @@
           <button @click="selectDir">Changer</button>
         </div>
       </div>
-      <div class="form-group">
+      <div class="form-group" v-if="store.currentProject">
         <label>Point d'entrée</label>
         <div class="input-with-button">
-          <input v-model="store.currentProject!.entryPoint" type="text" @change="store.updateProject({ entryPoint: store.currentProject!.entryPoint })" />
+          <input v-model="store.currentProject.entryPoint" type="text" @change="store.updateProject({ entryPoint: store.currentProject.entryPoint })" />
           <button @click="selectEntryPoint">Parcourir</button>
         </div>
       </div>
-      <div class="form-group">
+      <div class="form-group" v-if="store.currentProject">
         <label>Dossier Public (Document Root)</label>
-        <input v-model="store.currentProject!.publicDir" type="text" @change="store.updateProject({ publicDir: store.currentProject!.publicDir })" />
+        <input v-model="store.currentProject.publicDir" type="text" @change="store.updateProject({ publicDir: store.currentProject.publicDir })" />
         <small class="hint">Sous-dossier servant de racine web (ex: public)</small>
       </div>
       <div class="form-group">
@@ -153,49 +153,49 @@
         </div>
       </div>
     </div>
-    <div v-if="tab === 'updates'" class="tab-content">
+    <div v-if="tab === 'updates' && store.currentProject" class="tab-content">
       <div class="info-box info">
         <p>Afin que vos exécutables finaux puissent se mettre à jour tout seuls chez vos clients, vous devez fournir une URL pointant vers un fichier JSON (ex: version.json).</p>
       </div>
       <div class="form-group">
         <label>URL du fichier JSON de mise à jour (Optionnel)</label>
-        <input v-model="store.currentProject!.updateUrl" type="url" placeholder="https://ben-sms.com/maj.json" @change="store.updateProject({ updateUrl: store.currentProject!.updateUrl })" />
+        <input v-model="store.currentProject.updateUrl" type="url" placeholder="https://ben-sms.com/maj.json" @change="store.updateProject({ updateUrl: store.currentProject.updateUrl })" />
         <small class="hint">Laissez vide pour désactiver la mise à jour automatique.</small>
       </div>
       <div class="form-group">
         <label>Notes de cette version (Affichées à l'utilisateur)</label>
-        <textarea v-model="store.currentProject!.notes" placeholder="Ex: Correction de bugs mineurs, Amélioration de l'interface..." @change="store.updateProject({ notes: store.currentProject!.notes })"></textarea>
+        <textarea v-model="store.currentProject.notes" placeholder="Ex: Correction de bugs mineurs, Amélioration de l'interface..." @change="store.updateProject({ notes: store.currentProject.notes })"></textarea>
       </div>
     </div>
-    <div v-if="tab === 'server_config' && store.currentProject" class="tab-content">
+    <div v-if="tab === 'server_config' && store.currentProject?.server" class="tab-content">
       <h3>Configuration du déploiement SFTP</h3>
       <p class="description">Configurez les accès pour envoyer automatiquement vos fichiers sur votre serveur.</p>
       
       <div class="form-row">
         <div class="form-group flex-2">
           <label>Hôte SSH/SFTP</label>
-          <input v-model="store.currentProject.server!.host" type="text" placeholder="ex: node38-ca.n0c.com" />
+          <input v-model="store.currentProject.server.host" type="text" placeholder="ex: node38-ca.n0c.com" />
         </div>
         <div class="form-group flex-1">
           <label>Port</label>
-          <input v-model.number="store.currentProject.server!.port" type="number" />
+          <input v-model.number="store.currentProject.server.port" type="number" />
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-group flex-1">
           <label>Utilisateur</label>
-          <input v-model="store.currentProject.server!.user" type="text" />
+          <input v-model="store.currentProject.server.user" type="text" />
         </div>
         <div class="form-group flex-1">
           <label>Mot de passe</label>
-          <input v-model="store.currentProject.server!.pass" type="password" />
+          <input v-model="store.currentProject.server.pass" type="password" />
         </div>
       </div>
 
       <div class="form-group">
         <label>Chemin distant (Dossier cible)</label>
-        <input v-model="store.currentProject.server!.remotePath" type="text" placeholder="ex: /home/user/public_html/" />
+        <input v-model="store.currentProject.server.remotePath" type="text" placeholder="ex: /home/user/public_html/" />
         <small class="hint">Le dossier où seront déposés le .exe et le .json</small>
       </div>
     </div>
@@ -256,6 +256,15 @@ const settings = reactive<ExtendedSettings>({
 });
 
 import { watch } from 'vue';
+
+// Sync local settings with store project when project changes
+watch(() => store.currentProject, (project) => {
+  if (project) {
+    console.log('Synchronisation des réglages avec le projet:', project.name);
+    settings.exeName = project.name;
+    // We can also sync other settings from project to settings here if needed
+  }
+}, { immediate: true, deep: true });
 
 // Suggestion automatique de l'URL de mise à jour
 watch(() => settings.exeName, (newName) => {
@@ -325,19 +334,8 @@ const updateEnvValue = (key: string, event: any) => {
 };
 
 onMounted(async () => {
+  console.log('CompilerConfig monté. Projet actuel:', store.currentProject?.name);
   await fetchProjectDirs();
-  const loaded = localStorage.getItem('loadedConfig');
-  if (loaded) {
-    try {
-      const config = JSON.parse(loaded);
-      settings.exeName = config.exeName || 'MonApp';
-      settings.phpVersion = config.phpVersion || '8.2';
-      settings.port = config.port || 8080;
-      settings.encryption = config.encryption || false;
-      settings.compressionLevel = config.compressionLevel || 3;
-      localStorage.removeItem('loadedConfig');
-    } catch(e) {}
-  }
 });
 
 import { dialog } from '@tauri-apps/api';
@@ -407,8 +405,12 @@ const save = async () => {
   if (!savePath) return;
 
   const configToSave = {
-    ...settings,
-    sourceDir: store.currentProject.sourceDir,
+    ...store.currentProject,
+    exeName: settings.exeName,
+    phpVersion: settings.phpVersion,
+    port: settings.port,
+    encryption: settings.encryption,
+    compressionLevel: settings.compressionLevel,
   };
 
   try {

@@ -102,6 +102,18 @@ const project = reactive<Project>(store.currentProject ? { ...store.currentProje
   entryPoint: 'index.php',
   publicDir: '',
   externalDirs: ['vendor', 'storage'],
+  database: {
+    type: 'none',
+    port: 3307,
+    databaseName: '',
+    username: 'root',
+    password: '',
+    initSqlPath: ''
+  },
+  envVars: {
+    "DB_HOST": "127.0.0.1",
+    "STATION_NAME": "STATION-01"
+  }
 });
 
 // Sync partial updates to store to avoid losing data while typing

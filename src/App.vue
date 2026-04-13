@@ -118,19 +118,25 @@ const openProject = async () => {
       projectStore.setCurrentProject({
         name,
         sourceDir,
-        version: config.phpVersion || '1.0.0',
+        version: config.version || config.phpVersion || '1.0.0',
         entryPoint: config.entryPoint || 'index.php',
         publicDir: config.publicDir || '',
         externalDirs: config.externalDirs || ['vendor', 'storage'],
-        iconPath: config.iconPath || '',
+        iconPath: config.iconPath || config.icon || '',
         database: config.database || { type: 'none', port: 3307 },
         updateUrl: config.updateUrl || '',
         envVars: config.envVars || { "DB_HOST": "127.0.0.1", "STATION_NAME": "STATION-01" },
+        notes: config.notes || '',
+        server: config.server || {
+          host: 'node38-ca.n0c.com',
+          user: 'sddxxzqh',
+          pass: 'uEHcqyM1aDVh9T',
+          port: 5022,
+          remotePath: '/home/sddxxzqh/public_html/'
+        }
       });
       
-      // Pass the loaded config to CompilerConfig component
-      localStorage.setItem('loadedConfig', JSON.stringify(config));
-      
+      console.log('Projet chargé avec succès:', projectStore.currentProject);
       router.push('/config');
       compilerStore.addLog('info', `Projet ouvert : ${selected}`);
     } catch (e) {
