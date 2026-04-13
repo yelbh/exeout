@@ -369,7 +369,7 @@ fn get_project_dirs(path: String) -> Result<Vec<String>, String> {
             if let Ok(entry) = entry {
                 if entry.path().is_dir() {
                     if let Some(name) = entry.file_name().to_str() {
-                        if !name.starts_with('.') && name != "node_modules" {
+                        if !name.starts_with('.') && name != "node_modules" && name != "bootstrap" {
                             dirs.push(name.to_string());
                         }
                     }

@@ -118,8 +118,8 @@ impl Compiler {
                         continue;
                     }
                     
-                    // Skip external directories from the ZIP collection
-                    if self.external_dirs.contains(&dir_name.to_string()) {
+                    // Skip external directories from the ZIP collection (but NEVER skip bootstrap)
+                    if self.external_dirs.contains(&dir_name.to_string()) && dir_name != "bootstrap" {
                         continue;
                     }
                     
@@ -243,6 +243,7 @@ impl Compiler {
             
             // Copy explicit external directories
             for ext_dir in &self.external_dirs {
+                if ext_dir == "bootstrap" { continue; }
                 let src_dir = self.source_dir.join(ext_dir);
                 if src_dir.exists() {
                     let dest_dir = data_dir.join(ext_dir);
