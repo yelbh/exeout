@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.9.0](https://github.com/yelbh/exeout/compare/v1.8.0...v1.9.0) (2026-07-08)
+
+
+### Features
+
+* support multi-architecture loader configuration (x86/x64) ([d058a71](https://github.com/yelbh/exeout/commit/d058a71e95aece06cfb1108f63e330ceb31137fb))
+
 ## [1.8.0](https://github.com/yelbh/exeout/compare/v1.6.6...v1.8.0) (2026-04-13)
 
 
