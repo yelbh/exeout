@@ -1,0 +1,1 @@
+# Configuration Cargo vide de flags globaux pour éviter de casser les scripts de build (build.rs)

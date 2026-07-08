@@ -20,7 +20,7 @@ flate2 = "1.0"
 zstd = "0.12"
 aes-gcm = "0.10"
 rand = "0.8"
-winapi = { version = "0.3", features = ["winuser", "libloaderapi", "fileapi", "shellapi", "shlobj"] }
+winapi = { version = "0.3", features = ["winuser", "libloaderapi", "fileapi", "shellapi", "shlobj", "errhandlingapi", "winbase", "winnt", "minwindef"] }
 rust-embed = "6.6"
 base64 = "0.21"
 anyhow = "1.0"

@@ -75,13 +75,43 @@
       </div>
     </div>
     <div v-if="tab === 'php'" class="tab-content">
+      <div class="form-group" v-if="store.currentProject">
+        <label style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">📦 PHP Portable (Embarquement automatique)</label>
+        <p class="description" style="margin-bottom: 0.75rem;">Sélectionnez le dossier d'un PHP portable (ex: C:\php). Il sera copié à côté de votre .exe pour un fonctionnement autonome sans installation PHP sur le poste client.</p>
+        <div class="input-with-button">
+          <input :value="store.currentProject.phpPortablePath || ''" type="text" readonly placeholder="Aucun PHP sélectionné — le poste client devra avoir PHP dans son PATH" />
+          <button @click="selectPhpDir" class="btn-select">Parcourir...</button>
+          <button v-if="store.currentProject.phpPortablePath" @click="clearPhpDir" class="btn-clear" title="Supprimer la sélection">✕</button>
+        </div>
+        <div v-if="store.currentProject.phpPortablePath" class="php-status ok">
+          ✅ PHP portable sélectionné — sera copié dans <code>php/</code> à côté du .exe lors de la compilation.
+        </div>
+        <div v-else class="php-status warn">
+          ⚠️ Aucun PHP portable — l'exécutable utilisera le PHP système du poste client (si disponible).
+        </div>
+      </div>
+
       <div class="form-group">
-        <label>Version PHP</label>
+        <label>Version PHP de référence</label>
         <select v-model="settings.phpVersion">
           <option>8.1</option>
           <option>8.2</option>
           <option>8.3</option>
         </select>
+      </div>
+
+      <div class="form-group" v-if="store.currentProject">
+        <label style="margin-bottom: 1rem; font-weight: 600; color: var(--text-main);">Extensions PHP à activer</label>
+        <div class="extensions-grid">
+          <div v-for="ext in AVAILABLE_EXTENSIONS" :key="ext.id" class="ext-item">
+            <label class="checkbox-container">
+              <input type="checkbox" :checked="store.currentProject.phpExtensions?.includes(ext.id)" @change="toggleExtension(ext.id)" />
+              <span class="checkmark"></span>
+              <span class="ext-name" style="font-weight: 600;">{{ ext.id }}</span>
+            </label>
+            <span class="ext-desc">{{ ext.label }}</span>
+          </div>
+        </div>
       </div>
     </div>
     <div v-if="tab === 'server'" class="tab-content">
@@ -287,6 +317,37 @@ const fetchProjectDirs = async () => {
   }
 };
 
+const AVAILABLE_EXTENSIONS = [
+  { id: 'curl', label: 'cURL (Client URL Library)' },
+  { id: 'mbstring', label: 'MBString (Multi-Byte String)' },
+  { id: 'openssl', label: 'OpenSSL (Cryptography)' },
+  { id: 'pdo_mysql', label: 'PDO MySQL (MySQL database driver)' },
+  { id: 'pdo_sqlite', label: 'PDO SQLite (SQLite database driver)' },
+  { id: 'gd', label: 'GD (Image processing)' },
+  { id: 'zip', label: 'Zip (ZIP compression)' },
+  { id: 'xml', label: 'XML (XML parsing)' },
+  { id: 'bcmath', label: 'BCMath (Arbitrary precision mathematics)' },
+  { id: 'fileinfo', label: 'FileInfo (File type detection)' },
+  { id: 'intl', label: 'Intl (Internationalization)' },
+  { id: 'ftp', label: 'FTP (FTP transfer)' },
+  { id: 'soap', label: 'SOAP (Web services)' },
+  { id: 'tidy', label: 'Tidy (HTML cleaning)' },
+  { id: 'exif', label: 'Exif (Image metadata)' },
+  { id: 'sodium', label: 'Sodium (Modern cryptography)' },
+];
+
+const toggleExtension = (extId: string) => {
+  if (!store.currentProject) return;
+  const current = [...(store.currentProject.phpExtensions || [])];
+  const index = current.indexOf(extId);
+  if (index > -1) {
+    current.splice(index, 1);
+  } else {
+    current.push(extId);
+  }
+  store.updateProject({ phpExtensions: current });
+};
+
 const toggleExternal = (dir: string) => {
   if (!store.currentProject) return;
   const current = [...store.currentProject.externalDirs];
@@ -379,6 +440,23 @@ const selectIcon = async () => {
   if (selected) {
     store.updateProject({ iconPath: selected as string });
   }
+};
+
+const selectPhpDir = async () => {
+  if (!store.currentProject) return;
+  const selected = await dialog.open({
+    directory: true,
+    multiple: false,
+    title: 'Sélectionnez le dossier PHP portable (celui qui contient php.exe)',
+  });
+  if (selected) {
+    store.updateProject({ phpPortablePath: selected as string });
+  }
+};
+
+const clearPhpDir = () => {
+  if (!store.currentProject) return;
+  store.updateProject({ phpPortablePath: '' });
 };
 
 const selectInitSql = async () => {
@@ -569,5 +647,67 @@ select {
   border: none;
   font-weight: 600;
   margin-top: 2rem;
+}
+
+.extensions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  background: var(--bg-dark);
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ext-item {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ext-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 2rem;
+  margin-top: 0.25rem;
+}
+
+.btn-select {
+  background: var(--accent) !important;
+  color: white;
+  padding: 0.5rem 1rem;
+  white-space: nowrap;
+}
+
+.btn-clear {
+  background: var(--error, #ef4444) !important;
+  color: white;
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+}
+
+.php-status {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.php-status.ok {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+.php-status.warn {
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  color: #facc15;
 }
 </style>

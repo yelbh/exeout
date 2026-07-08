@@ -12,6 +12,8 @@ export interface Project {
   notes?: string;
   server?: ServerConfig;
   envVars: Record<string, string>;
+  phpExtensions?: string[];
+  phpPortablePath?: string;
 }
 
 export interface ServerConfig {

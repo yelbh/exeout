@@ -102,7 +102,7 @@ async fn deploy_project(window: tauri::Window, exe_path: String, json_path: Stri
 }
 
 #[tauri::command]
-async fn compile_project(window: tauri::Window, _name: String, version: String, source: String, output: String, entry_point: String, public_dir: String, external_dirs: Vec<String>, icon_path: Option<String>, database_config: Option<DatabaseConfig>, update_url: Option<String>, notes: Option<String>, env_vars: std::collections::HashMap<String, String>) -> Result<String, String> {
+async fn compile_project(window: tauri::Window, _name: String, version: String, source: String, output: String, entry_point: String, public_dir: String, external_dirs: Vec<String>, php_extensions: Vec<String>, php_portable_path: Option<String>, icon_path: Option<String>, database_config: Option<DatabaseConfig>, update_url: Option<String>, notes: Option<String>, env_vars: std::collections::HashMap<String, String>) -> Result<String, String> {
     let out_path = std::path::Path::new(&output).to_path_buf();
     let out_str = output.clone();
     
@@ -111,6 +111,8 @@ async fn compile_project(window: tauri::Window, _name: String, version: String, 
         let mut compiler = Compiler::new(&source, &out_str, &entry_point, &public_dir);
         compiler.version = version;
         compiler.external_dirs = external_dirs;
+        compiler.php_extensions = php_extensions;
+        compiler.php_portable_path = php_portable_path.filter(|p| !p.is_empty()).map(std::path::PathBuf::from);
         compiler.notes = notes;
         compiler.env_vars = env_vars;
         
@@ -171,7 +173,7 @@ async fn compile_project(window: tauri::Window, _name: String, version: String, 
 }
 
 #[tauri::command]
-async fn preview_project(state: tauri::State<'_, AppState>, source: String, database_config: Option<DatabaseConfig>) -> Result<u16, String> {
+async fn preview_project(state: tauri::State<'_, AppState>, source: String, database_config: Option<DatabaseConfig>, php_extensions: Vec<String>) -> Result<u16, String> {
     use std::process::Command;
     use std::net::TcpListener;
 
@@ -300,6 +302,11 @@ async fn preview_project(state: tauri::State<'_, AppState>, source: String, data
     let mut php_cmd = Command::new("php");
     php_cmd.arg("-S").arg(format!("127.0.0.1:{}", port))
            .arg("-t").arg(doc_root);
+
+    // Load selected PHP extensions
+    for ext in php_extensions {
+        php_cmd.arg("-d").arg(format!("extension={}", ext));
+    }
            
     // Laravel/Livewire fix: the PHP built-in server returns 404 for URLs with dots (like livewire.js)
     // unless we explicitly pass server.php as the router script.
@@ -324,7 +331,7 @@ async fn preview_project(state: tauri::State<'_, AppState>, source: String, data
     php_cmd.env("SESSION_LIFETIME", "120");
     php_cmd.env("APP_DEBUG", "true");
     php_cmd.env("APP_ENV", "local");
-    php_cmd.env("APP_URL", format!("http://127.0.0.1:{}", port));
+    php_cmd.env("APP_URL", format!("http://localhost:{}", port));
 
     if let Some(db) = &database_config {
         if db.db_type != "none" {

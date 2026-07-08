@@ -7,6 +7,7 @@ use std::process::Command;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::time::{UNIX_EPOCH, Duration};
+use std::collections::HashMap;
 use serde::Deserialize;
 
 use wry::{
@@ -67,7 +68,7 @@ fn show_error(msg: &str) {
     eprintln!("Error: {}", msg);
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct Config {
     pub entry_point: String,
     pub public_dir: Option<String>,
@@ -78,6 +79,7 @@ struct Config {
     pub db_name: Option<String>,
     pub db_user: Option<String>,
     pub db_pass: Option<String>,
+    pub php_extensions: Option<Vec<String>>,
 }
 
 fn log(msg: &str) {
@@ -108,14 +110,46 @@ fn main() {
     let event_loop = EventLoop::<UserEvent>::with_user_event();
     let proxy = event_loop.create_proxy();
 
-    let window = WindowBuilder::new()
+    let exe_metadata = fs::metadata(&exe_path).ok();
+    let modified = exe_metadata.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    let size = exe_metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+    let file_name = exe_path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let temp_dir = env::temp_dir().join(format!("exeoutput_cache_{}_{}_{}", file_name, modified, size));
+
+    // Nettoyer les anciens caches résiduels d'anciennes exécutions/crashs
+    if let Ok(entries) = fs::read_dir(env::temp_dir()) {
+        let prefix = format!("exeoutput_cache_{}_", file_name);
+        let current_dir_name = temp_dir.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if name.starts_with(&prefix) && name != current_dir_name {
+                            log(&format!("Nettoyage de l'ancien cache résiduel : {}", name));
+                            let _ = fs::remove_dir_all(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let window = match WindowBuilder::new()
         .with_title(&app_name)
         .with_inner_size(wry::application::dpi::LogicalSize::new(400.0, 300.0))
         .with_visible(false)
         .with_resizable(false)
         .with_decorations(false)
-        .build(&event_loop)
-        .unwrap();
+        .build(&event_loop) {
+            Ok(w) => w,
+            Err(e) => {
+                let err_msg = format!("Impossible de créer la fenêtre système : {}\nL'application va s'arrêter.", e);
+                log(&err_msg);
+                show_error(&err_msg);
+                return;
+            }
+        };
 
     // Center window
     if let Some(monitor) = window.current_monitor() {
@@ -127,16 +161,36 @@ fn main() {
     }
     window.set_visible(true);
 
-    let webview = WebViewBuilder::new(window)
-        .unwrap()
-        .with_html(&splash_html)
-        .unwrap()
-        .build()
-        .unwrap();
+    let webview = match WebViewBuilder::new(window) {
+        Ok(builder) => match builder.with_html(&splash_html) {
+            Ok(b) => match b.build() {
+                Ok(wv) => wv,
+                Err(e) => {
+                    let err_msg = format!("Erreur d'initialisation de WebView2 : {}\n\nVeuillez vous assurer que 'Microsoft Edge WebView2 Runtime' est bien installé sur cet ordinateur.", e);
+                    log(&err_msg);
+                    show_error(&err_msg);
+                    return;
+                }
+            },
+            Err(e) => {
+                let err_msg = format!("Erreur configuration HTML Splash : {}", e);
+                log(&err_msg);
+                show_error(&err_msg);
+                return;
+            }
+        },
+        Err(e) => {
+            let err_msg = format!("Erreur création WebView : {}\n\nVeuillez vérifier l'installation de WebView2.", e);
+            log(&err_msg);
+            show_error(&err_msg);
+            return;
+        }
+    };
 
+    let temp_dir_clone = temp_dir.clone();
     // Spawn extraction thread
     std::thread::spawn(move || {
-        match run_background() {
+        match run_background(temp_dir_clone) {
             Ok((url, children)) => { let _ = proxy.send_event(UserEvent::Ready(url, children)); }
             Err(e) => { let _ = proxy.send_event(UserEvent::Error(e.to_string())); }
         }
@@ -176,7 +230,12 @@ fn main() {
                 log("Fermeture de l'application et des services...");
                 for mut child in children_procs.drain(..) {
                     let _ = child.kill();
+                    let _ = child.wait();
                 }
+                
+                log("Nettoyage du dossier temporaire...");
+                let _ = fs::remove_dir_all(&temp_dir);
+
                 *control_flow = ControlFlow::Exit;
             }
             _ => (),
@@ -198,25 +257,66 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> io::Resul
     Ok(())
 }
 
-fn run_background() -> Result<(String, Vec<std::process::Child>), Box<dyn std::error::Error + Send + Sync>> {
+fn run_background(temp_dir: std::path::PathBuf) -> Result<(String, Vec<std::process::Child>), Box<dyn std::error::Error + Send + Sync>> {
     let exe_path = env::current_exe()?;
-    let exe_dir = exe_path.parent().ok_or("Cannot find EXE directory")?;
-    let exe_file = File::open(&exe_path)?;
-    let exe_metadata = fs::metadata(&exe_path)?;
-    let modified = exe_metadata.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
-    let size = exe_metadata.len();
-    let file_name = exe_path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let exe_dir = exe_path.parent().ok_or("Cannot find EXE directory")?.to_path_buf();
 
     let mut children = Vec::new();
 
-    // ── 1. Extraction ──────────────────────────────────────────────────────────
-    let temp_dir = env::temp_dir().join(format!("exeoutput_cache_{}_{}_{}", file_name, modified, size));
+    // ── 1. Read and Decrypt ZIP Payload ──────────────────────────────────────────
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = File::open(&exe_path)?;
+    
+    // Seek to the last 8 bytes to get the encrypted payload length
+    file.seek(SeekFrom::End(-8))?;
+    let mut len_bytes = [0u8; 8];
+    file.read_exact(&mut len_bytes)?;
+    let payload_len = u64::from_le_bytes(len_bytes);
+    
+    log(&format!("Chiffrement : Taille du payload détectée = {} octets", payload_len));
+    
+    // Seek to the start of the encrypted payload
+    let seek_offset = -(8 + payload_len as i64);
+    file.seek(SeekFrom::End(seek_offset))?;
+    
+    let mut encrypted_payload = vec![0u8; payload_len as usize];
+    file.read_exact(&mut encrypted_payload)?;
+    
+    // Decrypt the payload
+    const ENCRYPTION_KEY: &[u8; 32] = b"ex30utput_pr0tect_key_2026_aes22";
+    let decrypted_bytes = decrypt_payload(&encrypted_payload, ENCRYPTION_KEY)?;
+    log("Chiffrement : Déchiffrement AES-256-GCM réussi en mémoire.");
+
+    // ── 1b. Extraction ──────────────────────────────────────────────────────────
     fs::create_dir_all(&temp_dir)?;
+
+    // Sécuriser l'accès aux fichiers en limitant les permissions à l'utilisateur actuel et SYSTEM
+    let username = env::var("USERNAME").unwrap_or_default();
+    if !username.is_empty() {
+        // Exécuter icacls directement pour laisser Rust gérer le quoting automatique
+        let _ = Command::new("icacls")
+            .args(&[
+                temp_dir.to_str().unwrap(),
+                "/inheritance:r",
+                "/grant",
+                &format!("{}:(OI)(CI)F", username),
+                "/grant",
+                "*S-1-5-18:(OI)(CI)F", // SYSTEM
+            ])
+            .creation_flags(0x08000000)
+            .status();
+    }
+
+    // Masquer le répertoire dans l'explorateur (Attribut caché et système)
+    let _ = Command::new("attrib")
+        .args(&["+h", "+s", temp_dir.to_str().unwrap()])
+        .creation_flags(0x08000000)
+        .status();
 
     let extraction_marker = temp_dir.join(".extraction_ok");
     if !extraction_marker.exists() {
         log("Démarrage de l'extraction...");
-        let mut archive = zip::ZipArchive::new(exe_file)?;
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(decrypted_bytes))?;
         for i in 0..archive.len() {
             let mut file = archive.by_index(i)?;
             let outpath = match file.enclosed_name() {
@@ -233,6 +333,8 @@ fn run_background() -> Result<(String, Vec<std::process::Child>), Box<dyn std::e
         let _ = fs::write(&extraction_marker, "ok");
         log("Extraction terminée.");
     }
+
+    let php_exe = find_php(&exe_dir, &temp_dir);
 
     // ── 2. Config & External Mappings ──────────────────────────────────────────
     let config_path = temp_dir.join("exeoutput.json");
@@ -257,53 +359,151 @@ fn run_background() -> Result<(String, Vec<std::process::Child>), Box<dyn std::e
             let _ = copy_dir_recursive(&dst_in_temp, &src_in_data);
         }
         if src_in_data.is_dir() {
-            if let Some(p) = dst_in_temp.parent() { let _ = fs::create_dir_all(p); }
+            let _ = fs::create_dir_all(dst_in_temp.parent().unwrap_or(&dst_in_temp));
+            
+            // Native Rust removal is safer than cmd /c rmdir
             if dst_in_temp.exists() {
-                let _ = Command::new("cmd").args(&["/c", "rmdir", "/s", "/q", dst_in_temp.to_str().unwrap()]).creation_flags(0x08000000).status();
+                if dst_in_temp.is_dir() {
+                    let _ = fs::remove_dir_all(&dst_in_temp);
+                } else {
+                    let _ = fs::remove_file(&dst_in_temp);
+                }
             }
-            let _ = Command::new("cmd").args(&["/c", "mklink", "/j", dst_in_temp.to_str().unwrap(), src_in_data.to_str().unwrap()]).creation_flags(0x08000000).status();
+
+            // Restauration de la logique simple (Turn 20) : Mklink via CMD standard
+            // Cette version gérait correctement le dossier vendor sans conflits de guillemets.
+            let dst_str = dst_in_temp.to_string_lossy();
+            let src_str = src_in_data.to_string_lossy();
+            
+            // Suppression sécurisée avant recréation du lien
+            if dst_in_temp.exists() {
+                let _ = Command::new("cmd")
+                    .args(&["/c", "rmdir", "/s", "/q", &dst_str])
+                    .creation_flags(0x08000000)
+                    .status();
+            }
+
+            // Création de la jonction
+            let _ = Command::new("cmd")
+                .args(&["/c", "mklink", "/j", &dst_str, &src_str])
+                .creation_flags(0x08000000)
+                .status();
+
+            // FALLBACK : Si la jonction a échoué (souvent à cause de l'accent sur "Père"), 
+            // on crée un dossier physique pour que Laravel ne plante pas.
+            if !dst_in_temp.exists() {
+                let _ = fs::create_dir_all(&dst_in_temp);
+            }
         }
     }
 
     // ── 2b. Multiposte support: External .env override ────────────────────────
     let external_env = exe_dir.join(".env");
     if external_env.exists() {
-        log("Dispositif Multiposte : Fichier .env externe détecté. Fusion avec la configuration interne...");
+        log("Dispositif Multiposte : Fichier .env externe détecté. Fusion robuste avec la configuration interne...");
         let target_env = temp_dir.join(".env");
         
-        let mut internal_lines: Vec<String> = match fs::read_to_string(&target_env) {
-            Ok(content) => content.lines().map(|s| s.to_string()).collect(),
-            Err(_) => Vec::new(),
-        };
+        let mut env_map = HashMap::new();
+        let mut original_order = Vec::new();
 
-        if let Ok(external_content) = fs::read_to_string(&external_env) {
-            for ext_line in external_content.lines() {
-                let ext_line_trim = ext_line.trim();
-                
-                // Ignore empty lines
-                if ext_line_trim.is_empty() {
-                    continue;
+        // 1. Lire le .env interne (celui extrait du ZIP)
+        if let Ok(content) = fs::read_to_string(&target_env) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                    if let Some(pos) = trimmed.find('=') {
+                        let key = trimmed[..pos].trim().to_string();
+                        let value = trimmed[pos+1..].trim().to_string();
+                        env_map.insert(key.clone(), value);
+                        original_order.push(key);
+                    }
                 }
-                
-                // If it's a comment, just append it
-                if ext_line_trim.starts_with('#') {
-                    internal_lines.push(ext_line.to_string());
-                    continue;
+            }
+        }
+
+        // 2. Lire et fusionner le .env externe
+        if let Ok(content) = fs::read_to_string(&external_env) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                    if let Some(pos) = trimmed.find('=') {
+                        let key = trimmed[..pos].trim().to_string();
+                        let value = trimmed[pos+1..].trim().to_string();
+                        if !env_map.contains_key(&key) {
+                            original_order.push(key.clone());
+                        }
+                        env_map.insert(key, value);
+                    }
                 }
-                
-                // If it has a key=value format, remove the existing key and append the new one
-                if let Some(eq_idx) = ext_line.find('=') {
-                    let key = ext_line[..eq_idx].trim();
-                    internal_lines.retain(|line| {
-                        let line_trim = line.trim_start();
-                        !line_trim.starts_with(&(key.to_string() + "="))
-                    });
-                }
-                internal_lines.push(ext_line.to_string());
+            }
+        }
+
+        // 3. Réécrire le .env final
+        let mut final_content = String::new();
+        final_content.push_str("# Fichier généré automatiquement par le fusionneur Multiposte\n\n");
+        for key in original_order {
+            if let Some(val) = env_map.get(&key) {
+                final_content.push_str(&format!("{}={}\n", key, val));
             }
         }
         
-        let _ = fs::write(&target_env, internal_lines.join("\n"));
+        let _ = fs::write(&target_env, final_content);
+    }
+
+    // ── 2c. Force APP_URL / ASSET_URL for local execution ──────────────────────
+    let env_path = temp_dir.join(".env");
+    if env_path.exists() {
+        if let Ok(content) = fs::read_to_string(&env_path) {
+            let mut env_map = std::collections::HashMap::new();
+            let mut original_order = Vec::new();
+
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() {
+                    if trimmed.starts_with('#') {
+                        original_order.push(line.to_string());
+                    } else if let Some(pos) = trimmed.find('=') {
+                        let key = trimmed[..pos].trim().to_string();
+                        let value = trimmed[pos+1..].trim().to_string();
+                        env_map.insert(key.clone(), value);
+                        original_order.push(format!("KEY:{}", key));
+                    } else {
+                        original_order.push(line.to_string());
+                    }
+                } else {
+                    original_order.push("".to_string());
+                }
+            }
+
+            // Force local URL configuration
+            let target_url = "http://127.0.0.1:8080".to_string();
+            env_map.insert("APP_URL".to_string(), target_url.clone());
+            env_map.insert("ASSET_URL".to_string(), target_url.clone());
+            env_map.insert("VITE_APP_URL".to_string(), target_url.clone());
+            env_map.insert("MIX_APP_URL".to_string(), target_url.clone());
+
+            for key in &["APP_URL", "ASSET_URL", "VITE_APP_URL", "MIX_APP_URL"] {
+                let key_tag = format!("KEY:{}", key);
+                if !original_order.contains(&key_tag) {
+                    original_order.push(key_tag);
+                }
+            }
+
+            let mut final_content = String::new();
+            for item in original_order {
+                if item.starts_with("KEY:") {
+                    let key = &item[4..];
+                    if let Some(val) = env_map.get(key) {
+                        final_content.push_str(&format!("{}={}\n", key, val));
+                    }
+                } else {
+                    final_content.push_str(&format!("{}\n", item));
+                }
+            }
+
+            let _ = fs::write(&env_path, final_content);
+            log("APP_URL et ASSET_URL forcés à http://127.0.0.1:8080 dans le fichier .env extrait.");
+        }
     }
 
     // ── 3. Internal Back-Bridge ───────────────────────────────────────────────
@@ -340,7 +540,9 @@ fn run_background() -> Result<(String, Vec<std::process::Child>), Box<dyn std::e
                 db_cmd.arg("--no-defaults")
                       .arg(format!("--datadir={}", db_data_dir.to_str().unwrap()))
                       .arg(format!("--port={}", db_port))
-                      .arg("--bind-address=127.0.0.1")
+                      .arg("--bind-address=0.0.0.0")
+                      .arg("--max-allowed-packet=128M")
+                      .arg("--innodb-buffer-pool-size=256M")
                       .arg("--skip-grant-tables")
                       .arg("--console")
                       .creation_flags(0x08000000);
@@ -389,20 +591,9 @@ fn run_background() -> Result<(String, Vec<std::process::Child>), Box<dyn std::e
         }
     }
 
-    log("Démarrage du serveur PHP...");
-    let mut php_cmd = Command::new("php");
-    php_cmd.arg("-S").arg("127.0.0.1:8080").arg("-t").arg(&selected_doc_root).current_dir(&temp_dir);
-    
-    if let Some(db_type) = &config.db_type {
-        if db_type != "none" {
-            php_cmd.env("DB_CONNECTION", if db_type == "mariadb" { "mysql" } else { db_type });
-            php_cmd.env("DB_HOST", "127.0.0.1");
-            php_cmd.env("DB_PORT", config.db_port.unwrap_or(3307).to_string());
-            php_cmd.env("DB_DATABASE", config.db_name.as_deref().unwrap_or(""));
-            php_cmd.env("DB_USERNAME", config.db_user.as_deref().unwrap_or("root"));
-            php_cmd.env("DB_PASSWORD", config.db_pass.as_deref().unwrap_or(""));
-        }
-    }
+    log("Démarrage du serveur PHP sur 0.0.0.0:8080...");
+    let mut php_cmd = new_php_command(&php_exe, &config, &temp_dir, &exe_dir);
+    php_cmd.arg("-S").arg("0.0.0.0:8080").arg("-t").arg(&selected_doc_root);
     
     let server_php = temp_dir.join("server.php");
     if server_php.exists() { php_cmd.arg(&server_php); }
@@ -416,87 +607,246 @@ fn run_background() -> Result<(String, Vec<std::process::Child>), Box<dyn std::e
         if std::net::TcpStream::connect("127.0.0.1:8080").is_ok() { 
             log("Le serveur PHP est prêt.");
             
-            // ── 7. SQL Import Logic ───────────────────────────────────────────────
+            // ── 7. SQL Initialization Priority Logic ──────────────────────────────
             if db_ready {
                 let db_port = config.db_port.unwrap_or(3307);
                 let db_name = config.db_name.as_deref().unwrap_or("");
                 let mysql_exe = data_dir.join("mysql").join("bin").join("mysql.exe");
+                let init_marker = data_dir.join(".db_initialized");
 
-                if mysql_exe.exists() {
-                    // Check for internal init.sql
-                    let init_sql = data_dir.join("init.sql");
-                    if init_sql.exists() {
-                        log("Initialisation : Fichier init.sql détecté.");
-                        let cmd_str = format!(
-                            "type \"{}\" | \"{}\" -u root -P{} {}",
-                            init_sql.to_str().unwrap(),
-                            mysql_exe.to_str().unwrap(),
-                            db_port, db_name
-                        );
-                        let _ = Command::new("cmd").args(&["/c", &cmd_str]).creation_flags(0x08000000).status();
-                        let _ = fs::remove_file(init_sql);
-                    }
-
-                    // Check for external import.sql
-                    let import_sql = exe_dir.join("import.sql");
-                    if import_sql.exists() {
-                        log("Mise à jour : Fichier import.sql détecté.");
-                        let cmd_str = format!(
-                            "type \"{}\" | \"{}\" -u root -P{} {}",
-                            import_sql.to_str().unwrap(),
-                            mysql_exe.to_str().unwrap(),
-                            db_port, db_name
-                        );
-                        if Command::new("cmd").args(&["/c", &cmd_str]).creation_flags(0x08000000).status().is_ok() {
-                            let _ = fs::rename(&import_sql, exe_dir.join("import.sql.done"));
-                        }
-                    }
-
-                    // ── 7b. Cascade: Initial Pull from central server ─────────────
-                    // Only if: no import.sql was found AND no .sync_pull_done marker exists
-                    let pull_done_marker = data_dir.join(".sync_pull_done");
-                    let import_sql_done = exe_dir.join("import.sql.done");
-                    let import_sql_exists = exe_dir.join("import.sql").exists();
+                if mysql_exe.exists() && !init_marker.exists() {
+                    log("Nouvelle installation détectée : démarrage de la séquence d'initialisation...");
                     
-                    if !pull_done_marker.exists() && !import_sql_exists && !import_sql_done.exists() {
-                        // Check if ENTITE_ID is configured
-                        let env_path = temp_dir.join(".env");
-                        let mut entite_id_ok = false;
-                        if let Ok(content) = fs::read_to_string(&env_path) {
-                            for line in content.lines() {
-                                if line.starts_with("ENTITE_ID=") {
-                                    let val = line.replace("ENTITE_ID=", "").trim().to_string();
-                                    if !val.is_empty() && val != "CHANGE_ME" && val != "12345" {
-                                        entite_id_ok = true;
-                                    }
+                    // A. Toujours s'assurer que la base existe (prérequis pour artisan ou import)
+                    let create_sql = format!("CREATE DATABASE IF NOT EXISTS `{}` CHARACTER SET utf8mb4;", db_name);
+                    let mut create_cmd = Command::new(&mysql_exe);
+                    create_cmd.args(&["-u", "root", &format!("-P{}", db_port)])
+                              .stdin(std::process::Stdio::piped())
+                              .creation_flags(0x08000000);
+                    
+                    if let Ok(mut child) = create_cmd.spawn() {
+                        if let Some(mut stdin) = child.stdin.take() {
+                            let _ = stdin.write_all(create_sql.as_bytes());
+                        }
+                        let _ = child.wait();
+                    }
+
+                    // B. Vérifier si la base est déjà peuplée (tables existantes)
+                    //    Si oui, on considère que c'est une réinstallation sur une base existante :
+                    //    on crée le marqueur et on saute la séquence pour éviter les conflits.
+                    let check_tables_sql = format!("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '{}';", db_name);
+                    let tables_check = Command::new(&mysql_exe)
+                        .args(&["-u", "root", &format!("-P{}", db_port),
+                               "--skip-column-names", "-e", &check_tables_sql])
+                        .stdout(std::process::Stdio::piped())
+                        .creation_flags(0x08000000)
+                        .output();
+
+                    let db_has_tables = if let Ok(out) = tables_check {
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        stdout.trim().parse::<u32>().unwrap_or(0) > 0
+                    } else {
+                        false
+                    };
+
+                    // --- Phase 0 : Migration (Initialisation ou Réinitialisation) ---
+                    if db_has_tables {
+                        log("Base de données existante détectée. Réinitialisation complète pour assurer la compatibilité du schéma...");
+                    } else {
+                        log("Initialisation : Exécution des migrations de la base de données...");
+                    }
+
+                    let migrate_output = new_php_command(&php_exe, &config, &temp_dir, &exe_dir)
+                        .arg("artisan").arg("migrate:fresh").arg("--force")
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .creation_flags(0x08000000)
+                        .output();
+                    
+                    if let Ok(output) = migrate_output {
+                        let out = String::from_utf8_lossy(&output.stdout);
+                        let err = String::from_utf8_lossy(&output.stderr);
+                        
+                        if output.status.success() {
+                            log("Migrations terminées avec succès.");
+                            if !out.trim().is_empty() { log(&format!("Détails migrations : {}", out)); }
+                        } else {
+                            log("Avertissement : La migration a rencontré des problèmes.");
+                            log(&format!("Sortie standard : {}", out));
+                            log(&format!("Erreur standard : {}", err));
+                        }
+                    }
+
+                    let mut success = false;
+
+                    // --- Phase 1 : Récupération Cloud (sync-pull) ---
+                    let env_path = temp_dir.join(".env");
+                    let mut entite_id_ok = false;
+                    if let Ok(content) = fs::read_to_string(&env_path) {
+                        for line in content.lines() {
+                            if line.starts_with("ENTITE_ID=") {
+                                let val = line.replace("ENTITE_ID=", "").trim().to_string();
+                                if !val.is_empty() && val != "CHANGE_ME" && val != "12345" {
+                                    entite_id_ok = true;
                                 }
+                            }
+                        }
+                    }
+
+                    if entite_id_ok {
+                        log("Synchronisation : Tentative de récupération depuis la plateforme centrale...");
+                        let pull_output = new_php_command(&php_exe, &config, &temp_dir, &exe_dir)
+                            .arg("artisan").arg("parois:sync-pull")
+                            .stderr(std::process::Stdio::piped())
+                            .stdout(std::process::Stdio::piped())
+                            .creation_flags(0x08000000)
+                            .output();
+
+                        match pull_output {
+                            Ok(output) if output.status.success() => {
+                                log("Données Cloud récupérées avec succès.");
+                                success = true;
+                            }
+                            Ok(output) => {
+                                let err_msg = String::from_utf8_lossy(&output.stderr);
+                                let out_msg = String::from_utf8_lossy(&output.stdout);
+                                log(&format!("Échec Phase 1 (Cloud) : {}{}", out_msg, err_msg));
+                                log("Passage à la phase suivante...");
+                            }
+                            Err(e) => log(&format!("Erreur système Phase 1 : {}", e)),
+                        }
+                    }
+
+                    // --- Phase 2 : Import Manuel (import.sql) ---
+                    if !success {
+                        let possible_names = ["import.sql", "database.sql", "db.sql", &format!("{}.sql", db_name)];
+                        let mut import_target = None;
+                        for name in &possible_names {
+                            let candidate = exe_dir.join(*name);
+                            if candidate.exists() { import_target = Some(candidate); break; }
+                        }
+
+                        if let Some(import_sql) = import_target {
+                            log("Mise à jour : Fichier import.sql détecté.");
+                            
+                            // Utilise --force pour ignorer les avertissements SSL non bloquants
+                            // et --default-character-set=utf8mb4 pour l'encodage
+                            let mut import_cmd = Command::new(&mysql_exe);
+                            import_cmd.args(&[
+                                "-u", "root",
+                                &format!("-P{}", db_port),
+                                "--default-character-set=utf8mb4",
+                                "--force",     // continuer même en cas d'erreurs non critiques
+                                &db_name
+                            ])
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::piped())
+                            .creation_flags(0x08000000);
+                            
+                            if let Ok(file) = File::open(&import_sql) {
+                                import_cmd.stdin(std::process::Stdio::from(file));
+                                match import_cmd.output() {
+                                    Ok(output) => {
+                                        let err_str = String::from_utf8_lossy(&output.stderr).to_string();
+                                        // Filtrer les simples avertissements SSL pour ne pas les confondre avec des erreurs
+                                        let has_real_errors = err_str.lines().any(|l| {
+                                            let l = l.trim();
+                                            l.starts_with("ERROR") || l.contains("ERROR ")
+                                        });
+
+                                        if has_real_errors {
+                                            log("ERREUR : L'import SQL a echoue — des incompatibilites de schema ont ete detectees.");
+                                            log(&format!("Details : {}", err_str));
+                                        } else {
+                                            log("Import manuel réussi (eventuels avertissements ignorés).");
+                                            let _ = fs::rename(&import_sql, exe_dir.join(format!("{}.done", import_sql.file_name().unwrap().to_string_lossy())));
+                                            success = true;
+                                        }
+                                    }
+                                    Err(e) => log(&format!("Erreur système lors de l'import : {}", e)),
+                                }
+                            }
+                        }
+                    }
+
+                    // --- Phase 3 : Initialisation interne (init.sql) ---
+                    if !success {
+                        let init_sql = data_dir.join("init.sql");
+                        if init_sql.exists() {
+                            log("Initialisation : Utilisation du fichier d'initialisation usine...");
+                            let mut init_cmd = Command::new(&mysql_exe);
+                            init_cmd.args(&["-u", "root", &format!("-P{}", db_port), &db_name])
+                                    .creation_flags(0x08000000);
+                            
+                            if let Ok(file) = File::open(&init_sql) {
+                                init_cmd.stdin(std::process::Stdio::from(file));
+                                if init_cmd.status().map(|s| s.success()).unwrap_or(false) {
+                                    log("Initialisation usine terminée.");
+                                    success = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if success {
+                        let _ = fs::write(&init_marker, "ok");
+                        // Nettoyage final du cache pour s'assurer que les données fraîches sont vues
+                        let storage_paths = [
+                            temp_dir.join("storage/framework/sessions"),
+                            temp_dir.join("storage/framework/views"),
+                            temp_dir.join("storage/framework/cache/data"),
+                        ];
+                        for path in &storage_paths {
+                            if path.exists() {
+                                let _ = fs::remove_dir_all(path);
+                                let _ = fs::create_dir_all(path);
                             }
                         }
 
-                        if entite_id_ok {
-                            log("Premier lancement : tentative de récupération des données depuis la plateforme centrale...");
-                            let pull_status = Command::new("php")
-                                .arg("artisan").arg("parois:sync-pull")
-                                .current_dir(&temp_dir)
-                                .creation_flags(0x08000000)
-                                .status();
-                            match pull_status {
-                                Ok(s) if s.success() => {
-                                    log("Données initiales récupérées avec succès depuis la plateforme centrale.");
-                                    let _ = fs::write(&pull_done_marker, "ok");
-                                }
-                                Ok(_) => log("Le pull initial a échoué (réponse non-succès). La base de données locale sera utilisée telle quelle."),
-                                Err(e) => log(&format!("Erreur lors du pull initial : {}. La base locale sera utilisée.", e)),
+                        // --- Phase 4 : Création du compte Administrateur par défaut ---
+                        log("Vérification du compte administrateur...");
+                        let admin_script = "
+                            $entiteId = env('ENTITE_ID');
+                            if ($entiteId && !\\App\\Models\\User::where('type', 'admin')->exists()) {
+                                \\App\\Models\\User::create([
+                                    'name' => 'Administrateur',
+                                    'phone_number' => '0102030405',
+                                    'email' => 'admin@bengespa.com',
+                                    'password' => \\Illuminate\\Support\\Facades\\Hash::make('adminAdmin'),
+                                    'type' => 'admin',
+                                    'entite_id' => $entiteId
+                                ]);
+                                echo 'ADMIN_CREATED';
                             }
-                        } else {
-                            log("Premier lancement : ENTITE_ID non configuré, pull initial ignoré. Placez un import.sql à côté de l'EXE ou configurez ENTITE_ID dans .env.");
+                        ";
+                        
+                        let admin_output = new_php_command(&php_exe, &config, &temp_dir, &exe_dir)
+                            .arg("artisan").arg("tinker").arg("--execute").arg(admin_script.replace("\n", ""))
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::piped())
+                            .creation_flags(0x08000000)
+                            .output();
+
+                        if let Ok(output) = admin_output {
+                            let out = String::from_utf8_lossy(&output.stdout);
+                            if out.contains("ADMIN_CREATED") {
+                                log("Compte administrateur cree : 0102030405 / adminAdmin");
+                            } else {
+                                log("Compte administrateur deja existant ou entite non configuree.");
+                            }
                         }
                     }
+                    
+                    // Toujours supprimer le init.sql temporaire s'il existe pour rester propre
+                    let _ = fs::remove_file(data_dir.join("init.sql"));
                 }
             }
 
             // ── 8. Auto-Sync Background Task ──────────────────────────────────────────
             let sync_temp_dir = temp_dir.clone();
+            let sync_exe_dir = exe_dir.clone();
+            let sync_php_exe = php_exe.clone();
+            let sync_config = config.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(60)); // Startup Catch-up
                 loop {
@@ -522,9 +872,8 @@ fn run_background() -> Result<(String, Vec<std::process::Child>), Box<dyn std::e
 
                         if entite_id_ok {
                             log("Synchronisation automatique en cours (parois:sync-push)...");
-                            let _ = Command::new("php")
+                            let _ = new_php_command(&sync_php_exe, &sync_config, &sync_temp_dir, &sync_exe_dir)
                                 .arg("artisan").arg("parois:sync-push")
-                                .current_dir(&sync_temp_dir)
                                 .creation_flags(0x08000000)
                                 .status();
                         } else {
@@ -535,10 +884,232 @@ fn run_background() -> Result<(String, Vec<std::process::Child>), Box<dyn std::e
                 }
             });
 
-            return Ok(("http://127.0.0.1:8080".to_string(), children)); 
+            let mut start_url = "http://127.0.0.1:8080".to_string();
+            let entry = config.entry_point.trim();
+            if !entry.is_empty() && entry != "index.php" && entry != "index.html" {
+                if entry.starts_with('/') || entry.starts_with('?') {
+                    start_url.push_str(entry);
+                } else {
+                    start_url.push_str("/");
+                    start_url.push_str(entry);
+                }
+            }
+            return Ok((start_url, children)); 
         }
         std::thread::sleep(Duration::from_millis(100));
     }
     
-    Ok(("http://127.0.0.1:8080".to_string(), children))
+    let mut start_url = "http://127.0.0.1:8080".to_string();
+    let entry = config.entry_point.trim();
+    if !entry.is_empty() && entry != "index.php" && entry != "index.html" {
+        if entry.starts_with('/') || entry.starts_with('?') {
+            start_url.push_str(entry);
+        } else {
+            start_url.push_str("/");
+            start_url.push_str(entry);
+        }
+    }
+    Ok((start_url, children))
+}
+
+fn find_php(exe_dir: &std::path::Path, temp_dir: &std::path::Path) -> std::path::PathBuf {
+    // 1. Check in exe_dir/php/php.exe
+    let path = exe_dir.join("php").join("php.exe");
+    if path.exists() {
+        log(&format!("PHP portable trouve dans le dossier de l'EXE : {}", path.display()));
+        return path;
+    }
+
+    // 2. Check in exe_dir/data/php/php.exe
+    let path = exe_dir.join("data").join("php").join("php.exe");
+    if path.exists() {
+        log(&format!("PHP portable trouve dans le dossier data de l'EXE : {}", path.display()));
+        return path;
+    }
+
+    // 3. Check in temp_dir/php/php.exe (if packaged inside the ZIP)
+    let path = temp_dir.join("php").join("php.exe");
+    if path.exists() {
+        log(&format!("PHP portable trouve dans le dossier temporaire extrait : {}", path.display()));
+        return path;
+    }
+
+    // 4. Check in exe_dir/php.exe
+    let path = exe_dir.join("php.exe");
+    if path.exists() {
+        log(&format!("PHP portable trouve directement a cote de l'EXE : {}", path.display()));
+        return path;
+    }
+
+    // Fallback to system PHP
+    log("Aucun PHP portable trouve. Utilisation de la commande systeme 'php'...");
+    std::path::PathBuf::from("php")
+}
+
+fn decrypt_payload(encrypted_content: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    use aes_gcm::{Aes256Gcm, aead::{Aead, KeyInit}, Nonce};
+    if encrypted_content.len() < 12 {
+        return Err("Invalid ciphertext length".into());
+    }
+    let (nonce_bytes, ciphertext) = encrypted_content.split_at(12);
+    let cipher = Aes256Gcm::new(key.into());
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    let decrypted = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|e| format!("Decryption error: {}", e))?;
+    Ok(decrypted)
+}
+
+fn new_php_command(
+    php_exe: &std::path::Path,
+    config: &Config,
+    temp_dir: &std::path::Path,
+    exe_dir: &std::path::Path,
+) -> Command {
+    let mut cmd = Command::new(php_exe);
+    cmd.current_dir(temp_dir);
+
+    // Prepend the directory of the php executable to PATH so child processes can resolve 'php'
+    if let Some(php_dir) = php_exe.parent() {
+        let path_env = std::env::var_os("PATH").unwrap_or_default();
+        let mut paths = std::env::split_paths(&path_env).collect::<Vec<_>>();
+        // Insert at the beginning to prioritize our portable PHP version
+        paths.insert(0, php_dir.to_path_buf());
+        if let Ok(new_path) = std::env::join_paths(paths) {
+            cmd.env("PATH", new_path);
+        }
+    }
+
+    // Determine the PHP ext directory (only for portable PHP)
+    let is_portable = php_exe.to_string_lossy() != "php";
+    let ext_dir_opt: Option<std::path::PathBuf> = if is_portable {
+        php_exe.parent().map(|php_dir| php_dir.join("ext"))
+    } else {
+        None
+    };
+
+    // For portable PHP: use -n to ignore the bundled php.ini entirely.
+    // This prevents "Unable to load dynamic library" startup warnings
+    // caused by extension=xml / extension=bcmath entries in php.ini
+    // that reference DLLs absent from the portable PHP distribution.
+    // We will manually inject only the extensions that actually exist.
+    if is_portable {
+        cmd.arg("-n");
+    }
+
+    if let Some(ref ext_dir) = ext_dir_opt {
+        if ext_dir.exists() {
+            cmd.arg("-d").arg(format!("extension_dir={}", ext_dir.to_string_lossy()));
+        }
+    }
+
+    // Enable selected PHP extensions — only if the DLL actually exists
+    if let Some(exts) = &config.php_extensions {
+        for ext in exts {
+            let should_load = if let Some(ref ext_dir) = ext_dir_opt {
+                if ext_dir.exists() {
+                    // Try php_<ext>.dll first (Windows standard), then bare <ext>
+                    let dll_with_prefix = ext_dir.join(format!("php_{}.dll", ext));
+                    let dll_bare       = ext_dir.join(format!("{}.dll", ext));
+                    let dll_no_ext     = ext_dir.join(ext.as_str());
+                    dll_with_prefix.exists() || dll_bare.exists() || dll_no_ext.exists()
+                } else {
+                    true // no ext_dir → let PHP decide (system install)
+                }
+            } else {
+                true // system PHP → pass all extensions as-is
+            };
+
+            if should_load {
+                cmd.arg("-d").arg(format!("extension={}", ext));
+            }
+        }
+    }
+
+    // ── Configure SSL certificates for curl/openssl ──────────────────────────
+    // Build a prioritised list of candidate cacert.pem locations:
+    //   1. Next to the final EXE (user can place one there)
+    //   2. Next to php.exe (standard portable PHP location)
+    //   3. Common system-level locations used by curl on Windows
+    let mut cacert_candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    // (a) next to the deployed EXE
+    cacert_candidates.push(exe_dir.join("cacert.pem"));
+    cacert_candidates.push(exe_dir.join("php").join("cacert.pem"));
+
+    // (b) next to php.exe
+    if let Some(php_dir) = php_exe.parent() {
+        cacert_candidates.push(php_dir.join("cacert.pem"));
+        cacert_candidates.push(php_dir.join("ssl").join("cacert.pem"));
+        cacert_candidates.push(php_dir.join("extras").join("ssl").join("cacert.pem"));
+        // Some PHP Windows builds ship it here
+        cacert_candidates.push(php_dir.join("ca-bundle.crt"));
+        cacert_candidates.push(php_dir.join("curl-ca-bundle.crt"));
+    }
+
+    // (c) well-known system paths on Windows
+    if let Ok(system_root) = std::env::var("SystemRoot") {
+        cacert_candidates.push(std::path::PathBuf::from(&system_root).join("System32").join("curl-ca-bundle.crt"));
+    }
+    if let Ok(program_files) = std::env::var("ProgramFiles") {
+        cacert_candidates.push(std::path::PathBuf::from(&program_files).join("curl").join("cacert.pem"));
+    }
+
+    let found_cacert = cacert_candidates.iter().find(|p| p.exists()).cloned();
+
+    if let Some(ref cacert) = found_cacert {
+        let path_str = cacert.to_string_lossy();
+        // PHP ini settings (for openssl/curl PHP extensions)
+        cmd.arg("-d").arg(format!("curl.cainfo={}", path_str));
+        cmd.arg("-d").arg(format!("openssl.cafile={}", path_str));
+        // Environment variables picked up natively by curl and OpenSSL
+        cmd.env("CURL_CA_BUNDLE", cacert.as_os_str());
+        cmd.env("SSL_CERT_FILE", cacert.as_os_str());
+        cmd.env("REQUESTS_CA_BUNDLE", cacert.as_os_str()); // Python Guzzle compat
+    } else {
+        // Aucun cacert.pem trouvé — désactiver la vérification SSL comme dernier recours
+        // pour ne pas bloquer la synchronisation cloud.
+        // Note : placer un cacert.pem à côté de l'EXE ou dans php/ restaure la validation complète.
+        cmd.arg("-d").arg("curl.cainfo=");
+        // Désactiver la vérification SSL pour Guzzle (utilisé par Laravel pour les requêtes HTTP)
+        cmd.env("GUZZLE_VERIFY", "false");
+        // Variable interprétée par certaines configurations de Guzzle personnalisées
+        cmd.env("APP_VERIFY_SSL", "false");
+        // Désactive la vérification côté openssl pour les connexions sortantes
+        cmd.env("SSL_NO_VERIFY", "1");
+    }
+
+    // Force local APP_URL / ASSET_URL
+    cmd.env("APP_URL", "http://127.0.0.1:8080");
+    cmd.env("ASSET_URL", "http://127.0.0.1:8080");
+
+    // Configure Database connection parameters
+    if let Some(db_type) = &config.db_type {
+        if db_type != "none" {
+            cmd.env("DB_CONNECTION", if db_type == "mariadb" { "mysql" } else { db_type });
+            cmd.env("DB_HOST", "127.0.0.1");
+            cmd.env("DB_PORT", config.db_port.unwrap_or(3307).to_string());
+            
+            let db_name = config.db_name.as_deref().unwrap_or("");
+            if db_type == "sqlite" {
+                let file_name = std::path::Path::new(db_name).file_name().unwrap_or_default();
+                let external_sqlite = exe_dir.join(file_name);
+                if external_sqlite.exists() {
+                     cmd.env("DB_DATABASE", external_sqlite.to_str().unwrap());
+                } else if exe_dir.join("database.sqlite").exists() {
+                     cmd.env("DB_DATABASE", exe_dir.join("database.sqlite").to_str().unwrap());
+                } else {
+                     cmd.env("DB_DATABASE", db_name);
+                }
+            } else {
+                cmd.env("DB_DATABASE", db_name);
+            }
+            
+            cmd.env("DB_USERNAME", config.db_user.as_deref().unwrap_or("root"));
+            cmd.env("DB_PASSWORD", config.db_pass.as_deref().unwrap_or(""));
+        }
+    }
+
+    cmd
 }

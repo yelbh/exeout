@@ -23,7 +23,13 @@ const sanitizeProject = (project: any): Project => {
     envVars: project.envVars || {
       "DB_HOST": "127.0.0.1",
       "STATION_NAME": "STATION-01"
-    }
+    },
+    phpExtensions: project.phpExtensions || [
+      'curl', 'mbstring', 'openssl', 'pdo_mysql', 'pdo_sqlite', 
+      'gd', 'zip', 'xml', 'bcmath', 'fileinfo', 'intl', 'ftp', 
+      'soap', 'tidy', 'exif', 'sodium'
+    ],
+    phpPortablePath: project.phpPortablePath || ''
   };
 };
 

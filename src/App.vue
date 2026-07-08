@@ -126,6 +126,7 @@ const openProject = async () => {
         database: config.database || { type: 'none', port: 3307 },
         updateUrl: config.updateUrl || '',
         envVars: config.envVars || { "DB_HOST": "127.0.0.1", "STATION_NAME": "STATION-01" },
+        phpExtensions: config.phpExtensions || [],
         notes: config.notes || '',
         server: config.server || {
           host: 'node38-ca.n0c.com',
@@ -155,9 +156,10 @@ const previewProject = async () => {
     const port = await invoke('preview_project', {
       source: projectStore.currentProject.sourceDir,
       databaseConfig: projectStore.currentProject.database || null,
+      phpExtensions: projectStore.currentProject.phpExtensions || [],
     });
     compilerStore.addLog('info', `Serveur d'aperçu lancé sur le port ${port}`);
-    await shell.open(`http://127.0.0.1:${port}`);
+    await shell.open(`http://localhost:${port}`);
   } catch (e) {
     compilerStore.addLog('error', e as string);
   }
@@ -193,6 +195,8 @@ const compileProject = async () => {
       entryPoint: projectStore.currentProject.entryPoint,
       publicDir: projectStore.currentProject.publicDir,
       externalDirs: projectStore.currentProject.externalDirs || [],
+      phpExtensions: projectStore.currentProject.phpExtensions || [],
+      phpPortablePath: projectStore.currentProject.phpPortablePath || null,
       iconPath: projectStore.currentProject.iconPath || null,
       databaseConfig: projectStore.currentProject.database || null,
       updateUrl: projectStore.currentProject.updateUrl || null,
